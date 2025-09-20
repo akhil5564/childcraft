@@ -186,7 +186,7 @@ app.post('/books', async (req, res) => {
 });
 
 // Get all books route
-app.get('/books', async (req, res) => {
+app.get('/allbooks', async (req, res) => {
   try {
     const books = await Book.find();
     res.json(books);
@@ -214,7 +214,7 @@ app.get('/books/:id', async (req, res) => {
 });
 
 // Update book details route
-app.put('/books/:id', async (req, res) => {
+app.put('/book/:id', async (req, res) => {
   const { id } = req.params;
   const { title, subject, class: bookClass } = req.body;
 

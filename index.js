@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const cors = require('cors'); // ✅ Added CORS
 
 const User = require('./model/User');
 const Book = require('./model/Book');
@@ -9,6 +10,8 @@ const QuizItem = require('./model/QuizItem');  // new
 
 const app = express();
 app.use(express.json());
+app.use(cors({ origin: '*' })); // ✅ Allow all origins
+
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/myapp', {
@@ -143,24 +146,80 @@ app.delete('/users/:id', async (req, res) => {
 // ----- Book routes -----
 
 // Create book
+// app.post('/books', async (req, res) => {
+//   const { title, subject, class: bookClass } = req.body;
+//   try {
+//     const newBook = new Book({ title, subject, class: bookClass });
+//     await newBook.save();
+//     res.status(201).json({
+//       id: newBook._id,
+//       title: newBook.title,
+//       subject: newBook.subject,
+//       class: newBook.class,
+//       createdAt: newBook.createdAt.toISOString(),
+//       message: 'Book created successfully'
+//     });
+//   } catch (err) {
+//     console.error('🔴 Server error (create book):', err);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// });
+
+
+
 app.post('/books', async (req, res) => {
-  const { title, subject, class: bookClass } = req.body;
-  try {
-    const newBook = new Book({ title, subject, class: bookClass });
-    await newBook.save();
-    res.status(201).json({
-      id: newBook._id,
-      title: newBook.title,
-      subject: newBook.subject,
-      class: newBook.class,
-      createdAt: newBook.createdAt.toISOString(),
-      message: 'Book created successfully'
+  console.log("📩 Incoming /books request body:", req.body);
+
+  
+const { title, subject, Subject, class: bookClass } = req.body;
+const finalSubject = subject || Subject; // ✅ handles both
+  // ✅ Step 1: Validate required fields
+  if (!title || !subject || bookClass === undefined) {
+    console.warn("⚠️ Validation failed:", { title, subject, bookClass });
+    return res.status(400).json({
+      message: "Missing required fields: title, subject, class"
     });
+  }
+
+  try {
+    // ✅ Step 2: Create new Book
+    console.log("🛠 Creating new Book with data:", { title, subject, class: bookClass });
+    const newBook = new Book({ title, subject, class: bookClass });
+
+    // ✅ Step 3: Save Book
+    const savedBook = await newBook.save();
+    console.log("✅ Book saved successfully:", savedBook);
+
+    // ✅ Step 4: Respond
+    res.status(201).json({
+      id: savedBook._id,
+      title: savedBook.title,
+      subject: savedBook.subject,
+      class: savedBook.class,
+      createdAt: savedBook.createdAt.toISOString(),
+      message: "Book created successfully"
+    });
+
   } catch (err) {
-    console.error('🔴 Server error (create book):', err);
-    res.status(500).json({ message: 'Server error' });
+    // ✅ Step 5: Handle errors
+    console.error("❌ Error while creating book:", err);
+
+    if (err.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Validation Error",
+        details: err.errors
+      });
+    }
+
+    res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
+
+
+
+
+
 
 // Get all books
 app.get('/books', async (req, res) => {

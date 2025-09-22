@@ -193,9 +193,10 @@ const finalSubject = subject || Subject; // ✅ handles both
     // ✅ Step 4: Respond
     res.status(201).json({
       id: savedBook._id,
-      title: savedBook.title,
+      book: savedBook.title,
       subject: savedBook.subject,
       class: savedBook.class,
+      code:savedBooks.code,
       createdAt: savedBook.createdAt.toISOString(),
       message: "Book created successfully"
     });
@@ -216,6 +217,33 @@ const finalSubject = subject || Subject; // ✅ handles both
 });
 
 
+// ✅ Search Books
+app.get('/books', async (req, res) => {
+  try {
+    console.log("🔍 Incoming search query:", req.query);
+
+    const { title, subject, class: bookClass } = req.query;
+
+    // ✅ Build filter dynamically
+    const filter = {};
+    if (title) filter.title = new RegExp(title, "i"); // case-insensitive search
+    if (subject) filter.subject = new RegExp(subject, "i");
+    if (bookClass) filter.class = Number(bookClass); // ensure numeric match
+
+    console.log("🛠 Applying filter:", filter);
+
+    const books = await Book.find(filter).lean();
+
+    res.json({
+      count: books.length,
+      results: books
+    });
+
+  } catch (err) {
+    console.error("❌ Error while searching books:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
 
 
 

@@ -230,7 +230,7 @@ app.post('/books', async (req, res) => {
 
 
 
-// ✅ Search + Pagination for Books
+// ✅ Search Books
 app.get('/allbooks', async (req, res) => {
   try {
     console.log("🔍 Incoming search query:", req.query);
@@ -269,6 +269,7 @@ app.get('/allbooks', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 

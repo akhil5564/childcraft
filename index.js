@@ -183,43 +183,38 @@ app.delete('/users/:id', async (req, res) => {
 // });
 
 
-
 app.post('/books', async (req, res) => {
   console.log("📩 Incoming /books request body:", req.body);
 
-  
-const { title, subject, Subject, class: bookClass } = req.body;
-const finalSubject = subject || Subject; // ✅ handles both
-  // ✅ Step 1: Validate required fields
-  if (!title || !subject || bookClass === undefined) {
-    console.warn("⚠️ Validation failed:", { title, subject, bookClass });
+  const { book, subject, Subject, class: bookClass, code } = req.body;
+  const finalSubject = subject || Subject;
+
+  if (!book || !finalSubject || bookClass === undefined || !code) {
+    console.warn("⚠️ Validation failed:", { book, finalSubject, bookClass, code });
     return res.status(400).json({
-      message: "Missing required fields: title, subject, class"
+      message: "Missing required fields: book, subject, class, code"
     });
   }
 
   try {
-    // ✅ Step 2: Create new Book
-    console.log("🛠 Creating new Book with data:", { title, subject, class: bookClass });
-    const newBook = new Book({ title, subject, class: bookClass });
+    console.log("🛠 Creating new Book with data:", { book, subject: finalSubject, class: bookClass, code });
 
-    // ✅ Step 3: Save Book
+    const newBook = new Book({ book, subject: finalSubject, class: bookClass, code });
+
     const savedBook = await newBook.save();
     console.log("✅ Book saved successfully:", savedBook);
 
-    // ✅ Step 4: Respond
     res.status(201).json({
       id: savedBook._id,
-      book: savedBook.title,
+      book: savedBook.book,
       subject: savedBook.subject,
       class: savedBook.class,
-      code:savedBooks.code,
+      code: savedBook.code,
       createdAt: savedBook.createdAt.toISOString(),
       message: "Book created successfully"
     });
 
   } catch (err) {
-    // ✅ Step 5: Handle errors
     console.error("❌ Error while creating book:", err);
 
     if (err.name === "ValidationError") {
@@ -232,6 +227,7 @@ const finalSubject = subject || Subject; // ✅ handles both
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 // ✅ Search Books

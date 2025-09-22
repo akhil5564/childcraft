@@ -230,26 +230,38 @@ app.post('/books', async (req, res) => {
 
 
 
-// ✅ Search Books
+// ✅ Search + Pagination for Books
 app.get('/allbooks', async (req, res) => {
   try {
     console.log("🔍 Incoming search query:", req.query);
 
-    const { title, subject, class: bookClass } = req.query;
+    let { book, subject, class: bookClass, page = 1, pageSize = 10 } = req.query;
+
+    page = Number(page);
+    pageSize = Number(pageSize);
 
     // ✅ Build filter dynamically
     const filter = {};
-    if (title) filter.title = new RegExp(title, "i"); // case-insensitive search
+    if (book) filter.book = new RegExp(book, "i"); // case-insensitive search
     if (subject) filter.subject = new RegExp(subject, "i");
     if (bookClass) filter.class = Number(bookClass); // ensure numeric match
 
     console.log("🛠 Applying filter:", filter);
 
-    const books = await Book.find(filter).lean();
+    // ✅ Fetch books with pagination
+    const books = await Book.find(filter)
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    const total = await Book.countDocuments(filter);
 
     res.json({
-      count: books.length,
-      results: books
+      total,                        // total matched books
+      page,                         // current page
+      pageSize,                     // page size requested
+      totalPages: Math.ceil(total / pageSize),
+      results: books                // current page books
     });
 
   } catch (err) {

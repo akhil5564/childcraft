@@ -79,12 +79,26 @@ app.post('/login', async (req, res) => {
 
 // Get users with pagination
 app.get('/users', async (req, res) => {
-  const { page = 1, pageSize = 10 } = req.query;
+  const { page = 1, pageSize = 10, search = "" } = req.query;
+
   try {
-    const users = await User.find()
+    // ✅ Build filter
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { username: new RegExp(search, "i") }, // case-insensitive username search
+        { role: new RegExp(search, "i") },     // allow searching role too
+        { status: new RegExp(search, "i") }    // allow searching status
+      ];
+    }
+
+    // ✅ Query DB
+    const users = await User.find(filter)
       .skip((page - 1) * pageSize)
       .limit(Number(pageSize));
-    const total = await User.countDocuments();
+
+    const total = await User.countDocuments(filter);
+
     res.json({
       users: users.map(u => ({
         id: u._id,
@@ -94,13 +108,16 @@ app.get('/users', async (req, res) => {
       })),
       total,
       page: Number(page),
-      pageSize: Number(pageSize)
+      pageSize: Number(pageSize),
+      search
     });
+
   } catch (err) {
     console.error('🔴 Server error (get users):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 // Update user status
 app.patch('/users/:id/status', async (req, res) => {
@@ -218,7 +235,7 @@ const finalSubject = subject || Subject; // ✅ handles both
 
 
 // ✅ Search Books
-app.get('/books', async (req, res) => {
+app.get('/allbooks', async (req, res) => {
   try {
     console.log("🔍 Incoming search query:", req.query);
 
@@ -250,7 +267,7 @@ app.get('/books', async (req, res) => {
 
 
 // Get all books
-app.get('/books', async (req, res) => {
+app.get('/allbooks', async (req, res) => {
   try {
     const books = await Book.find();
     res.json({

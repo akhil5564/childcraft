@@ -1,10 +1,11 @@
-// index.js
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+
 const User = require('./model/User');
 const Book = require('./model/Book');
+const QuizItem = require('./model/QuizItem');  // new
 
 const app = express();
 app.use(express.json());
@@ -20,27 +21,19 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/myapp', {
     process.exit(1);
   });
 
-// User registration route
+// ----- User routes -----
+
+// Register user
 app.post('/register', async (req, res) => {
   const { username, password, role, status } = req.body;
-
   try {
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ message: 'Username already taken' });
     }
-
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      username,
-      password: hashedPassword,
-      role,
-      status
-    });
-
+    const newUser = new User({ username, password: hashedPassword, role, status });
     await newUser.save();
-
     res.status(201).json({
       id: newUser._id,
       username: newUser.username,
@@ -50,26 +43,23 @@ app.post('/register', async (req, res) => {
       message: 'User created successfully'
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (register):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// User login route
+// Login user
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-
   try {
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
-
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid username or password' });
     }
-
     res.json({
       id: user._id,
       username: user.username,
@@ -79,98 +69,85 @@ app.post('/login', async (req, res) => {
       message: 'Login successful'
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (login):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get users with pagination route
+// Get users with pagination
 app.get('/users', async (req, res) => {
   const { page = 1, pageSize = 10 } = req.query;
-
   try {
     const users = await User.find()
       .skip((page - 1) * pageSize)
       .limit(Number(pageSize));
-
     const total = await User.countDocuments();
-
     res.json({
-      users: users.map(user => ({
-        id: user._id,
-        username: user.username,
-        status: user.status.toString(),
-        role: user.role
+      users: users.map(u => ({
+        id: u._id,
+        username: u.username,
+        status: u.status.toString(),
+        role: u.role
       })),
       total,
       page: Number(page),
       pageSize: Number(pageSize)
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (get users):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Update user status route
+// Update user status
 app.patch('/users/:id/status', async (req, res) => {
   const { id } = req.params;
-
   try {
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
     user.status = !user.status;
     await user.save();
-
     res.json({
       id: user._id,
       username: user.username,
       status: user.status.toString(),
       role: user.role,
-      message: `User status updated to ${user.status ? 'active' : 'inactive'}`,
+      message: `User status updated to ${user.status ? 'active' : 'inactive'}`
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (patch user status):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete user route
+// Delete user
 app.delete('/users/:id', async (req, res) => {
   const { id } = req.params;
-
   try {
     const deletedUser = await User.findByIdAndDelete(id);
     if (!deletedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
-
     res.json({
       message: 'User deleted successfully',
       deletedId: deletedUser._id
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (delete user):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Create new book route
+// ----- Book routes -----
+
+// Create book
 app.post('/books', async (req, res) => {
   const { title, subject, class: bookClass } = req.body;
-
   try {
-    const newBook = new Book({
-      title,
-      subject,
-      class: bookClass
-    });
-
+    const newBook = new Book({ title, subject, class: bookClass });
     await newBook.save();
-
     res.status(201).json({
       id: newBook._id,
       title: newBook.title,
@@ -180,56 +157,62 @@ app.post('/books', async (req, res) => {
       message: 'Book created successfully'
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (create book):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get all books route
-app.get('/allbooks', async (req, res) => {
+// Get all books
+app.get('/books', async (req, res) => {
   try {
     const books = await Book.find();
-    res.json(books);
+    res.json({
+      books: books.map(b => ({
+        id: b._id,
+        title: b.title,
+        subject: b.subject,
+        class: b.class
+      }))
+    });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (get books):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get book by ID route
+// Get book by ID
 app.get('/books/:id', async (req, res) => {
   const { id } = req.params;
-
   try {
     const book = await Book.findById(id);
     if (!book) {
       return res.status(404).json({ message: 'Book not found' });
     }
-
-    res.json(book);
+    res.json({
+      id: book._id,
+      title: book.title,
+      subject: book.subject,
+      class: book.class
+    });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (get book by id):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Update book details route
-app.put('/book/:id', async (req, res) => {
+// Update book
+app.put('/books/:id', async (req, res) => {
   const { id } = req.params;
   const { title, subject, class: bookClass } = req.body;
-
   try {
-    const updatedBook = await Book.findByIdAndUpdate(id, {
-      title,
-      subject,
-      class: bookClass,
-      updatedAt: new Date()
-    }, { new: true });
-
+    const updatedBook = await Book.findByIdAndUpdate(
+      id,
+      { title, subject, class: bookClass },
+      { new: true, timestamps: true }  // note: timestamps in schema handle updatedAt
+    );
     if (!updatedBook) {
       return res.status(404).json({ message: 'Book not found' });
     }
-
     res.json({
       id: updatedBook._id,
       title: updatedBook.title,
@@ -239,27 +222,67 @@ app.put('/book/:id', async (req, res) => {
       message: 'Book updated successfully'
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (update book):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete book route
+// Delete book
 app.delete('/books/:id', async (req, res) => {
   const { id } = req.params;
-
   try {
     const deletedBook = await Book.findByIdAndDelete(id);
     if (!deletedBook) {
       return res.status(404).json({ message: 'Book not found' });
     }
-
     res.json({
       message: 'Book deleted successfully',
       deletedId: deletedBook._id
     });
   } catch (err) {
-    console.error('🔴 Server error:', err);
+    console.error('🔴 Server error (delete book):', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ----- New QuizItem route -----
+
+// Create QuizItem
+app.post('/quizItems', async (req, res) => {
+  try {
+    const { className, subject, title, chapter, status, questions } = req.body;
+
+    if (!className || !subject || !title || !chapter) {
+      return res.status(400).json({ message: 'Missing required fields: className, subject, title, chapter' });
+    }
+    if (!Array.isArray(questions)) {
+      return res.status(400).json({ message: 'questions must be an array' });
+    }
+
+    const newQuiz = new QuizItem({
+      className,
+      subject,
+      title,
+      chapter,
+      status: status === undefined ? true : status,
+      questions
+    });
+
+    await newQuiz.save();
+
+    res.status(201).json({
+      id: newQuiz._id,
+      className: newQuiz.className,
+      subject: newQuiz.subject,
+      title: newQuiz.title,
+      chapter: newQuiz.chapter,
+      status: newQuiz.status,
+      questions: newQuiz.questions,
+      createdAt: newQuiz.createdAt.toISOString(),
+      message: 'Question created successfully'
+    });
+  } catch (err) {
+    console.error('🔴 Server error (create question):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

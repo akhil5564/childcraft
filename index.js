@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const cors = require('cors'); // ✅ Added CORS
 
 const User = require('./model/User');
+const Chapter = require('./model/Chapter');  // ✅ correct path
+
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
 
@@ -184,7 +186,6 @@ app.delete('/users/:id', async (req, res) => {
 
 
 
-// GET /books?book=New%20Book&subject=English&class=3
 // GET /books?class=3&subject=English
 app.get('/books', async (req, res) => {
   try {
@@ -217,34 +218,31 @@ app.get('/books', async (req, res) => {
 
 
 // Create Book with Chapters
-app.post('/books', async (req, res) => {
+app.post('/chapter', async (req, res) => {
   try {
-    console.log("📩 Incoming /books payload:", req.body);
-
     const { book, code, subject, class: bookClass, chapters } = req.body;
 
-    if (!book || !code || !subject || !bookClass) {
-      return res.status(400).json({ message: "Missing required fields" });
+    // Validate required fields
+    if (!book || !subject || !bookClass || !Array.isArray(chapters) || chapters.length === 0) {
+      return res.status(400).json({ message: 'Missing required fields or chapters' });
     }
 
-    const newBook = new Book({
-      book,
-      code,
-      subject,
-      class: bookClass,
-      chapters
-    });
+    // Create new chapter document
+    const newChapterDoc = new Chapter({ book, code, subject, class: bookClass, chapters });
 
-    const savedBook = await newBook.save();
-    res.status(201).json({
-      message: "Book created successfully",
-      book: savedBook
-    });
+    // Save to database
+    const savedDoc = await newChapterDoc.save();
+
+    res.status(201).json({ message: 'Book with chapters saved successfully', book: savedDoc });
+
   } catch (err) {
-    console.error("❌ Error while creating book:", err);
-    res.status(500).json({ message: "Server Error", error: err.message });
+    console.error('❌ Error while creating book with chapters:', err);
+    res.status(500).json({ message: 'Server Error', error: err.message });
   }
 });
+
+
+
 
 
 

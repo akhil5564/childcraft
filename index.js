@@ -216,6 +216,38 @@ app.get('/books', async (req, res) => {
 
 
 
+// Create Book with Chapters
+app.post('/books', async (req, res) => {
+  try {
+    console.log("📩 Incoming /books payload:", req.body);
+
+    const { book, code, subject, class: bookClass, chapters } = req.body;
+
+    if (!book || !code || !subject || !bookClass) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const newBook = new Book({
+      book,
+      code,
+      subject,
+      class: bookClass,
+      chapters
+    });
+
+    const savedBook = await newBook.save();
+    res.status(201).json({
+      message: "Book created successfully",
+      book: savedBook
+    });
+  } catch (err) {
+    console.error("❌ Error while creating book:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+
+
 app.post('/books', async (req, res) => {
   console.log("📩 Incoming /books request body:", req.body);
 

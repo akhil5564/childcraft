@@ -217,7 +217,7 @@ app.get('/books', async (req, res) => {
 
 
 // GET /search-books?book=English&subject=English&class=3&page=1&pageSize=10
-app.get('/search-books', async (req, res) => {
+app.get('/chapter', async (req, res) => {
   try {
     let { book, subject, class: bookClass, page = 1, pageSize = 10 } = req.query;
     page = Number(page);

@@ -79,6 +79,44 @@ app.post('/login', async (req, res) => {
   }
 });
 
+
+
+// ✅ Get Chapters
+app.get('/chapters', async (req, res) => {
+  try {
+    console.log("📩 Incoming chapters request:", req.query);
+
+    const { subject, class: bookClass, book } = req.query;
+
+    if (!subject || !bookClass || !book) {
+      return res.status(400).json({ 
+        message: "subject, class, and book are required" 
+      });
+    }
+
+    // ✅ Build filter
+    const filter = {
+      subject: new RegExp(subject, "i"), // case-insensitive match
+      class: Number(bookClass),
+      book: new RegExp(book, "i")
+    };
+
+    console.log("🛠 Filter:", filter);
+
+    const chapters = await Chapter.find(filter).lean();
+
+    res.json({
+      count: chapters.length,
+      results: chapters
+    });
+
+  } catch (err) {
+    console.error("❌ Error while fetching chapters:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+
 // Get users with pagination
 app.get('/users', async (req, res) => {
   const { page = 1, pageSize = 10, search = "" } = req.query;

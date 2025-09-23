@@ -183,6 +183,39 @@ app.delete('/users/:id', async (req, res) => {
 // });
 
 
+
+// GET /books?book=New%20Book&subject=English&class=3
+// GET /books?class=3&subject=English
+app.get('/books', async (req, res) => {
+  try {
+    console.log("🔍 Incoming filters:", req.query);
+
+    const { subject, class: bookClass } = req.query;
+
+    // Build filter dynamically
+    const filter = {};
+    if (subject) filter.subject = new RegExp(subject, "i"); // case-insensitive match
+    if (bookClass) filter.class = String(bookClass);        // ensure it's string since schema has String
+
+    console.log("🛠 Applying filter:", filter);
+
+    // Fetch only books that match subject + class
+    const books = await Book.find(filter, "book") // 👈 only return `book` field
+      .lean();
+
+    res.json({
+      count: books.length,
+      books: books.map(b => b.book) // 👈 return array of book names only
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching books:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+
+
 app.post('/books', async (req, res) => {
   console.log("📩 Incoming /books request body:", req.body);
 

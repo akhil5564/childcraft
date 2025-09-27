@@ -324,32 +324,31 @@ app.get('/chapter', async (req, res) => {
     res.status(500).json({ message: 'Server Error', error: err.message });
   }
 });
-
-
 // Create Book with Chapters
 app.post('/chapter', async (req, res) => {
   try {
-    const { book, code, subject, class: bookClass, chapters } = req.body;
+    const { bookid, subject, class: bookClass, chapters } = req.body;
 
     // ✅ Validate required fields
-    if (!book || !subject || !bookClass || !Array.isArray(chapters) || chapters.length === 0) {
+    if (!bookid || !subject || !bookClass || !Array.isArray(chapters) || chapters.length === 0) {
       return res.status(400).json({ message: 'Missing required fields or chapters' });
     }
 
     // ✅ Create new chapter document
-    const newChapterDoc = new Chapter({ book, code, subject, class: bookClass, chapters });
+    const newChapterDoc = new Chapter({
+      book: bookid,        // <-- bookid stored in "book"
+      subject,
+      class: bookClass,
+      chapters
+    });
 
     // ✅ Save to database
     const savedDoc = await newChapterDoc.save();
 
-    // ✅ Custom response format
+    // ✅ Response format
     res.status(201).json({
-      class: savedDoc.class,
-      subject: savedDoc.subject,
-      bookid: savedDoc._id.toString(),
-      chapters: savedDoc.chapters.map(ch => ({
-        chapterName: ch.chapterName
-      }))
+      message: "Book with chapters created successfully",
+      _id: savedDoc._id.toString()
     });
 
   } catch (err) {

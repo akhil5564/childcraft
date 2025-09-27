@@ -9,6 +9,7 @@ const Chapter = require('./model/Chapter');  // ✅ correct path
 
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
+const Subject = require('./model/Subject');
 
 const app = express();
 app.use(express.json());
@@ -81,7 +82,7 @@ app.post('/login', async (req, res) => {
 
 
 
-// ✅ Get Chapters
+// ✅ Get Chapters by subject, class, and book
 app.get('/chapters', async (req, res) => {
   try {
     console.log("📩 Incoming chapters request:", req.query);
@@ -89,25 +90,33 @@ app.get('/chapters', async (req, res) => {
     const { subject, class: bookClass, book } = req.query;
 
     if (!subject || !bookClass || !book) {
-      return res.status(400).json({ 
-        message: "subject, class, and book are required" 
+      return res.status(400).json({
+        message: "subject, class, and book are required"
       });
     }
 
     // ✅ Build filter
     const filter = {
       subject: new RegExp(subject, "i"), // case-insensitive match
-      class: Number(bookClass),
+      class: String(bookClass),          // ensure same type as schema
       book: new RegExp(book, "i")
     };
 
     console.log("🛠 Filter:", filter);
 
-    const chapters = await Chapter.find(filter).lean();
+    // Fetch matching document
+    const doc = await Chapter.findOne(filter).lean();
 
+    if (!doc) {
+      return res.status(404).json({ message: "No chapters found" });
+    }
+
+    // ✅ Return only the chapters array
     res.json({
-      count: chapters.length,
-      results: chapters
+      chapters: doc.chapters.map(ch => ({
+        chapterName: ch.chapterName,
+        _id: ch._id
+      }))
     });
 
   } catch (err) {
@@ -115,6 +124,7 @@ app.get('/chapters', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 // Get users with pagination
@@ -225,6 +235,7 @@ app.delete('/users/:id', async (req, res) => {
 
 
 // GET /books?class=3&subject=English
+// ✅ Get books with subject & class filter
 app.get('/books', async (req, res) => {
   try {
     console.log("🔍 Incoming filters:", req.query);
@@ -234,17 +245,18 @@ app.get('/books', async (req, res) => {
     // Build filter dynamically
     const filter = {};
     if (subject) filter.subject = new RegExp(subject, "i"); // case-insensitive match
-    if (bookClass) filter.class = String(bookClass);        // ensure it's string since schema has String
+    if (bookClass) filter.class = String(bookClass);        // ensure string match
 
     console.log("🛠 Applying filter:", filter);
 
-    // Fetch only books that match subject + class
-    const books = await Book.find(filter, "book") // 👈 only return `book` field
-      .lean();
+    // Fetch matching books (id + book fields)
+    const books = await Book.find(filter, "book").lean();
 
     res.json({
-      count: books.length,
-      books: books.map(b => b.book) // 👈 return array of book names only
+      books: books.map(b => ({
+        id: b._id,   // ✅ MongoDB ObjectId
+        book: b.book
+      }))
     });
 
   } catch (err) {
@@ -252,6 +264,7 @@ app.get('/books', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 // GET /search-books?book=English&subject=English&class=3&page=1&pageSize=10
@@ -318,18 +331,26 @@ app.post('/chapter', async (req, res) => {
   try {
     const { book, code, subject, class: bookClass, chapters } = req.body;
 
-    // Validate required fields
+    // ✅ Validate required fields
     if (!book || !subject || !bookClass || !Array.isArray(chapters) || chapters.length === 0) {
       return res.status(400).json({ message: 'Missing required fields or chapters' });
     }
 
-    // Create new chapter document
+    // ✅ Create new chapter document
     const newChapterDoc = new Chapter({ book, code, subject, class: bookClass, chapters });
 
-    // Save to database
+    // ✅ Save to database
     const savedDoc = await newChapterDoc.save();
 
-    res.status(201).json({ message: 'Book with chapters saved successfully', book: savedDoc });
+    // ✅ Custom response format
+    res.status(201).json({
+      class: savedDoc.class,
+      subject: savedDoc.subject,
+      bookid: savedDoc._id.toString(),
+      chapters: savedDoc.chapters.map(ch => ({
+        chapterName: ch.chapterName
+      }))
+    });
 
   } catch (err) {
     console.error('❌ Error while creating book with chapters:', err);
@@ -339,7 +360,64 @@ app.post('/chapter', async (req, res) => {
 
 
 
+// Update chapters for a book by ID
+app.put('/chapter/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { chapters } = req.body;
 
+    if (!Array.isArray(chapters) || chapters.length === 0) {
+      return res.status(400).json({ message: 'Chapters must be a non-empty array' });
+    }
+
+    const updatedDoc = await Chapter.findByIdAndUpdate(
+      id,
+      { $set: { chapters } }, // replace old chapters with new
+      { new: true }           // return updated document
+    );
+
+    if (!updatedDoc) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    res.json({
+      class: updatedDoc.class,
+      subject: updatedDoc.subject,
+      bookid: updatedDoc._id.toString(),
+      chapters: updatedDoc.chapters.map(ch => ({
+        chapterName: ch.chapterName
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error while updating chapters:', err);
+    res.status(500).json({ message: 'Server Error', error: err.message });
+  }
+});
+
+
+
+// Delete a book with chapters by ID
+app.delete('/chapter/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deletedDoc = await Chapter.findByIdAndDelete(id);
+
+    if (!deletedDoc) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    res.json({
+      message: 'Book with chapters deleted successfully',
+      bookid: deletedDoc._id.toString()
+    });
+
+  } catch (err) {
+    console.error('❌ Error while deleting book:', err);
+    res.status(500).json({ message: 'Server Error', error: err.message });
+  }
+});
 
 
 app.post('/books', async (req, res) => {
@@ -452,6 +530,122 @@ app.get('/allbooks', async (req, res) => {
   }
 });
 
+
+
+// ----- Subject routes -----
+
+// Create subject
+app.post('/subject', async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+
+    // Check duplicate
+    const existing = await Subject.findOne({ name: new RegExp(`^${name}$`, "i") });
+    if (existing) {
+      return res.status(400).json({ message: "Subject already exists" });
+    }
+
+    const newSubject = new Subject({ name });
+    await newSubject.save();
+
+    res.status(201).json({
+      id: newSubject._id,
+      name: newSubject.name,
+      message: "Subject created successfully"
+    });
+  } catch (err) {
+    console.error("❌ Error creating subject:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get all subjects
+// ✅ Get subjects with pagination + search
+app.get('/subject', async (req, res) => {
+  try {
+    let { page = 1, pageSize = 10, search = "" } = req.query;
+    page = Number(page);
+    pageSize = Number(pageSize);
+
+    // Build filter
+    const filter = {};
+    if (search) {
+      filter.name = new RegExp(search, "i"); // case-insensitive search
+    }
+
+    // Query DB
+    const subjects = await Subject.find(filter)
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    const total = await Subject.countDocuments(filter);
+
+    res.json({
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+      subjects: subjects.map(s => ({
+        id: s._id,
+        name: s.name
+      }))
+    });
+  } catch (err) {
+    console.error("❌ Error fetching subjects:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete subject
+app.delete('/subject/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await Subject.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ message: "Subject not found" });
+    }
+    res.json({
+      message: "Subject deleted successfully",
+      deletedId: deleted._id
+    });
+  } catch (err) {
+    console.error("❌ Error deleting subject:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ Update book by ID
+app.put('/books/:id', async (req, res) => {
+  const { id } = req.params;
+  const { book, subject, class: bookClass, code } = req.body;
+
+  try {
+    const updatedBook = await Book.findByIdAndUpdate(
+      id,
+      { book, subject, class: bookClass, code },
+      { new: true }
+    );
+
+    if (!updatedBook) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.json({
+      id: updatedBook._id, // always MongoDB ObjectId
+      message: "Book updated successfully"
+    });
+  } catch (err) {
+    console.error("❌ Server error (update book):", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 // Get book by ID
 app.get('/books/:id', async (req, res) => {
   const { id } = req.params;
@@ -520,44 +714,137 @@ app.delete('/books/:id', async (req, res) => {
 // ----- New QuizItem route -----
 
 // Create QuizItem
+// ✅ Create Quiz Item
 app.post('/quizItems', async (req, res) => {
   try {
-    const { className, subject, title, chapter, status, questions } = req.body;
+    const { className, subject, book, title, chapter, status, questions } = req.body;
 
-    if (!className || !subject || !title || !chapter) {
-      return res.status(400).json({ message: 'Missing required fields: className, subject, title, chapter' });
+    // ✅ Validation
+    if (!className || !subject || !book || !chapter) {
+      return res.status(400).json({ message: 'Missing required fields: className, subject, book, chapter' });
     }
-    if (!Array.isArray(questions)) {
-      return res.status(400).json({ message: 'questions must be an array' });
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ message: 'questions must be a non-empty array' });
     }
 
+    // ✅ Create new Quiz
     const newQuiz = new QuizItem({
       className,
       subject,
-      title,
-      chapter,
+      book,      // ✅ store bookId
+      title,     // optional quiz title
+      chapter,   // chapterId
       status: status === undefined ? true : status,
       questions
     });
 
     await newQuiz.save();
 
+    // ✅ Custom Response
     res.status(201).json({
-      id: newQuiz._id,
+      id: newQuiz._id.toString(),
       className: newQuiz.className,
       subject: newQuiz.subject,
-      title: newQuiz.title,
+      book: newQuiz.book,
       chapter: newQuiz.chapter,
       status: newQuiz.status,
-      questions: newQuiz.questions,
+      questions: newQuiz.questions.map(q => ({
+        questionType: q.questionType,
+        question: q.question,
+        marks: q.marks,
+        options: q.options.map(opt => ({ text: opt.text })),
+        image: q.image
+      })),
       createdAt: newQuiz.createdAt.toISOString(),
       message: 'Question created successfully'
     });
+
   } catch (err) {
     console.error('🔴 Server error (create question):', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
+// Get QuizItem by ID
+app.get('/quizItems/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quiz = await QuizItem.findById(id).lean();
+
+    if (!quiz) {
+      return res.status(404).json({ message: 'Quiz item not found' });
+    }
+
+    res.json({
+      id: quiz._id.toString(),
+      className: quiz.className,
+      subject: quiz.subject,
+      book: quiz.book,
+      chapter: quiz.chapter,
+      status: quiz.status,
+      questions: quiz.questions.map(q => ({
+        questionType: q.questionType,
+        question: q.question,
+        marks: q.marks,
+        options: q.options.map(opt => ({ text: opt.text })),
+        image: q.image
+      })),
+      createdAt: quiz.createdAt.toISOString()
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching quiz item:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+// Update QuizItem by ID
+app.put('/quizItems/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { className, subject, book, chapter, status, questions, title } = req.body;
+
+    // ✅ Validation (optional: only required fields)
+    if (!className || !subject || !book || !chapter) {
+      return res.status(400).json({ message: 'Missing required fields: className, subject, book, chapter' });
+    }
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ message: 'questions must be a non-empty array' });
+    }
+
+    const updatedQuiz = await QuizItem.findByIdAndUpdate(
+      id,
+      { className, subject, book, chapter, status, questions, title },
+      { new: true }
+    );
+
+    if (!updatedQuiz) {
+      return res.status(404).json({ message: 'Quiz item not found' });
+    }
+
+    res.json({
+      id: updatedQuiz._id.toString(),
+      className: updatedQuiz.className,
+      subject: updatedQuiz.subject,
+      book: updatedQuiz.book,
+      chapter: updatedQuiz.chapter,
+      status: updatedQuiz.status,
+      questions: updatedQuiz.questions.map(q => ({
+        questionType: q.questionType,
+        question: q.question,
+        marks: q.marks,
+        options: q.options.map(opt => ({ text: opt.text })),
+        image: q.image
+      })),
+      updatedAt: updatedQuiz.updatedAt.toISOString(),
+      message: 'Quiz item updated successfully'
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating quiz item:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 
 // Start server
 const PORT = process.env.PORT || 5000;

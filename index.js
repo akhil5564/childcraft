@@ -302,28 +302,41 @@ app.get('/chapter', async (req, res) => {
 
 
 // GET /chapter?book=English&subject=English&class=3
+
+
 app.get('/chapter', async (req, res) => {
   try {
-    const { book, subject, class: bookClass } = req.query;
+    const { page = 1, pageSize = 10 } = req.query;
+    const skip = (page - 1) * pageSize;
 
-    // Build dynamic filter
-    const filter = {};
-    if (book) filter.book = new RegExp(book, 'i'); // search by book name
-    if (subject) filter.subject = new RegExp(subject, 'i');
-    if (bookClass) filter.class = bookClass;
+    const total = await Chapter.countDocuments();
 
-    const chapters = await Chapter.find(filter);
+    const chapters = await Chapter.find()
+      .populate("book", "book -_id") // only fetch `book` field from Book model
+      .skip(skip)
+      .limit(Number(pageSize))
+      .lean();
 
-    if (chapters.length === 0) {
-      return res.status(404).json({ message: 'No books found matching the criteria' });
-    }
+    const results = chapters.map(ch => ({
+      ...ch,
+      book: ch.book?.book || null // replace ObjectId with actual book name
+    }));
 
-    res.json({ count: chapters.length, chapters });
+    res.json({
+      total,
+      page: Number(page),
+      pageSize: Number(pageSize),
+      totalPages: Math.ceil(total / pageSize),
+      results
+    });
+
   } catch (err) {
-    console.error('❌ Error fetching chapters:', err);
-    res.status(500).json({ message: 'Server Error', error: err.message });
+    console.error("❌ Error fetching chapters:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
+
 // Create Book with Chapters
 app.post('/chapter', async (req, res) => {
   try {

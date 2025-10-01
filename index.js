@@ -306,20 +306,30 @@ app.get('/chapter', async (req, res) => {
 
 app.get('/chapterd', async (req, res) => {
   try {
-    const { page = 1, pageSize = 10 } = req.query;
+    const { page = 1, pageSize = 10, book, subject, class: className } = req.query;
     const skip = (page - 1) * pageSize;
 
-    const total = await Chapter.countDocuments();
+    // Build dynamic filter object
+    let filter = {};
 
-    const chapters = await Chapter.find()
-      .populate("book", "book -_id") // only fetch `book` field from Book model
+    if (subject) filter.subject = subject;
+    if (className) filter.class = className;
+    if (book) filter["book.book"] = book; // if book name is inside book object
+
+    // Count total documents with filter
+    const total = await Chapter.countDocuments(filter);
+
+    // Fetch with filter
+    const chapters = await Chapter.find(filter)
+      .populate("book", "book -_id") // fetch only book field
       .skip(skip)
       .limit(Number(pageSize))
       .lean();
 
+    // Replace ObjectId with book name
     const results = chapters.map(ch => ({
       ...ch,
-      book: ch.book?.book || null // replace ObjectId with actual book name
+      book: ch.book?.book || null
     }));
 
     res.json({

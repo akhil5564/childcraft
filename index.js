@@ -303,31 +303,41 @@ app.get('/chapter', async (req, res) => {
 
 // GET /chapter?book=English&subject=English&class=3
 
-
 app.get('/chapterd', async (req, res) => {
   try {
-    const { page = 1, pageSize = 10, book, subject, class: className } = req.query;
+    const { page = 1, pageSize = 10, book, subject, class: className, search } = req.query;
     const skip = (page - 1) * pageSize;
 
-    // Build dynamic filter object
     let filter = {};
 
-    if (subject) filter.subject = subject;
-    if (className) filter.class = className;
-    if (book) filter["book.book"] = book; // if book name is inside book object
+    // ✅ Apply filters with partial match
+    if (subject) filter.subject = new RegExp(subject, "i"); // case-insensitive
+    if (className) filter.class = new RegExp(className, "i");
+    if (search) {
+      // Search across multiple fields (subject, class, etc.)
+      filter.$or = [
+        { subject: new RegExp(search, "i") },
+        { class: new RegExp(search, "i") }
+      ];
+    }
 
-    // Count total documents with filter
-    const total = await Chapter.countDocuments(filter);
-
-    // Fetch with filter
+    // Fetch chapters with populate + book filter
     const chapters = await Chapter.find(filter)
-      .populate("book", "book -_id") // fetch only book field
+      .populate({
+        path: "book",
+        select: "book -_id",
+        match: book ? { book: new RegExp(book, "i") } : {} // partial book match
+      })
       .skip(skip)
       .limit(Number(pageSize))
       .lean();
 
-    // Replace ObjectId with book name
-    const results = chapters.map(ch => ({
+    // Remove items where book didn't match
+    const filteredChapters = chapters.filter(ch => ch.book !== null);
+
+    const total = filteredChapters.length;
+
+    const results = filteredChapters.map(ch => ({
       ...ch,
       book: ch.book?.book || null
     }));
@@ -345,7 +355,6 @@ app.get('/chapterd', async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-
 
 // Create Book with Chapters
 app.post('/chapter', async (req, res) => {

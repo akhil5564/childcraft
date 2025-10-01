@@ -304,7 +304,7 @@ app.get('/chapter', async (req, res) => {
 // GET /chapter?book=English&subject=English&class=3
 
 
-app.get('/chapter', async (req, res) => {
+app.get('/chapterd', async (req, res) => {
   try {
     const { page = 1, pageSize = 10 } = req.query;
     const skip = (page - 1) * pageSize;

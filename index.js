@@ -233,7 +233,6 @@ app.delete('/users/:id', async (req, res) => {
 
 
 
-
 app.get('/qustion', async (req, res) => {
   try {
     const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;
@@ -241,14 +240,17 @@ app.get('/qustion', async (req, res) => {
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
-    if (className) filter.className = String(className);
+    if (className) filter.className = String(className); // filter by class
     if (chapter) filter.chapter = new RegExp(chapter, "i");
     if (book) filter.book = new RegExp(book, "i");
     if (questionType) filter["questions.questionType"] = questionType;
 
-    // Get raw quizzes
+    console.log("🔍 Filter:", filter);
+
+    // Fetch quizzes sorted by createdAt descending
     const quizzes = await QuizItem.find(filter)
-      .select("className subject chapter book questions.question questions.questionType")
+      .sort({ createdAt: -1 }) // newest first
+      .select("className subject chapter book questions.question questions.questionType createdAt")
       .lean();
 
     // Flatten into individual questions
@@ -259,7 +261,8 @@ app.get('/qustion', async (req, res) => {
         subject: q.subject,
         className: q.className,
         chapter: q.chapter,
-        book: q.book
+        book: q.book,
+        createdAt: q.createdAt
       }))
     );
 
@@ -269,8 +272,6 @@ app.get('/qustion', async (req, res) => {
       results = results.filter(item =>
         regex.test(item.question) ||
         regex.test(item.chapter) ||
-        regex.test(item.subject) ||
-        regex.test(item.subject) ||
         regex.test(item.subject) ||
         regex.test(item.book)
       );

@@ -231,6 +231,69 @@ app.delete('/users/:id', async (req, res) => {
 
 
 
+
+
+
+app.get('/qustion', async (req, res) => {
+  try {
+    const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;
+
+    // Build dynamic filter
+    let filter = {};
+    if (subject) filter.subject = new RegExp(subject, "i");
+    if (className) filter.className = String(className);
+    if (chapter) filter.chapter = new RegExp(chapter, "i");
+    if (book) filter.book = new RegExp(book, "i");
+    if (questionType) filter["questions.questionType"] = questionType;
+
+    // Get raw quizzes
+    const quizzes = await QuizItem.find(filter)
+      .select("className subject chapter book questions.question questions.questionType")
+      .lean();
+
+    // Flatten into individual questions
+    let results = quizzes.flatMap(q =>
+      q.questions.map(ques => ({
+        question: ques.question,
+        questionType: ques.questionType,
+        subject: q.subject,
+        className: q.className,
+        chapter: q.chapter,
+        book: q.book
+      }))
+    );
+
+    // Extra text search (q can match question, chapter, subject, book)
+    if (q) {
+      const regex = new RegExp(q, "i");
+      results = results.filter(item =>
+        regex.test(item.question) ||
+        regex.test(item.chapter) ||
+        regex.test(item.subject) ||
+        regex.test(item.book)
+      );
+    }
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = results.slice(start, end);
+
+    res.json({
+      total: results.length,
+      page: Number(page),
+      limit: Number(limit),
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error("❌ Error fetching quizzes:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+
+
 // GET /books?class=3&subject=English
 // ✅ Get books with subject & class filter
 app.get('/books', async (req, res) => {

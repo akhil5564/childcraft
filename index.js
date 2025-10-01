@@ -83,7 +83,6 @@ app.post('/login', async (req, res) => {
 
 
 // ✅ Get Chapters by subject, class, and book
-
 app.get('/chaptersr', async (req, res) => {
   try {
     const { subject, class: bookClass, book } = req.query;
@@ -94,30 +93,34 @@ app.get('/chaptersr', async (req, res) => {
       });
     }
 
-    // find chapters where `book` is ObjectId
-    const chapters = await Chapter.find({
-      book,              // book ID from query
+    // Find chapters by Book ObjectId, subject, and class
+    const chapterDocs = await Chapter.find({
+      book,              // Book ID from query
       subject,
       class: bookClass
-    }).populate('book', 'book code subject class');
+    }).populate('book', 'book code subject class').lean();
 
-    if (!chapters || chapters.length === 0) {
+    if (!chapterDocs || chapterDocs.length === 0) {
       return res.status(404).json({ message: "No chapters found" });
     }
 
-    res.json({
-      chapters: chapters.map(ch => ({
-        chapterName: ch.chapters.map(c => c.chapterName),
-        book: ch.book.book,
+    // Flatten all chapters from all documents into individual objects
+    const chapters = chapterDocs.flatMap(chapterDoc =>
+      chapterDoc.chapters.map(ch => ({
+        chapterName: ch.chapterName,
+        number: ch.number,
+        book: chapterDoc.book.book,
         _id: ch._id
       }))
-    });
+    );
+
+    res.json(chapters);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 
 
 

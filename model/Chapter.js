@@ -1,8 +1,8 @@
-// models/chapter.js
 const mongoose = require('mongoose');
+require('./Book'); // make sure path is correct
 
 const chapterSchema = new mongoose.Schema({
-  book: { type: mongoose.Schema.Types.ObjectId, ref: "Book" }, // reference Book
+  book: { type: mongoose.Schema.Types.ObjectId, ref: "Book" }, // reference by ID
   subject: { type: String, required: true },
   class: { type: String, required: true },
   chapters: [

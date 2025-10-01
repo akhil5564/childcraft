@@ -83,10 +83,9 @@ app.post('/login', async (req, res) => {
 
 
 // ✅ Get Chapters by subject, class, and book
-app.get('/chapters', async (req, res) => {
-  try {
-    console.log("📩 Incoming chapters request:", req.query);
 
+app.get('/chaptersr', async (req, res) => {
+  try {
     const { subject, class: bookClass, book } = req.query;
 
     if (!subject || !bookClass || !book) {
@@ -95,35 +94,30 @@ app.get('/chapters', async (req, res) => {
       });
     }
 
-    // ✅ Build filter
-    const filter = {
-      subject: new RegExp(subject, "i"), // case-insensitive match
-      class: String(bookClass),          // ensure same type as schema
-      book: new RegExp(book, "i")
-    };
+    // find chapters where `book` is ObjectId
+    const chapters = await Chapter.find({
+      book,              // book ID from query
+      subject,
+      class: bookClass
+    }).populate('book', 'book code subject class');
 
-    console.log("🛠 Filter:", filter);
-
-    // Fetch matching document
-    const doc = await Chapter.findOne(filter).lean();
-
-    if (!doc) {
+    if (!chapters || chapters.length === 0) {
       return res.status(404).json({ message: "No chapters found" });
     }
 
-    // ✅ Return only the chapters array
     res.json({
-      chapters: doc.chapters.map(ch => ({
-        chapterName: ch.chapterName,
+      chapters: chapters.map(ch => ({
+        chapterName: ch.chapters.map(c => c.chapterName),
+        book: ch.book.book,
         _id: ch._id
       }))
     });
-
   } catch (err) {
-    console.error("❌ Error while fetching chapters:", err);
+    console.error(err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 

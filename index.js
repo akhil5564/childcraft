@@ -270,6 +270,8 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.question) ||
         regex.test(item.chapter) ||
         regex.test(item.subject) ||
+        regex.test(item.subject) ||
+        regex.test(item.subject) ||
         regex.test(item.book)
       );
     }

@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 const optionSchema = new Schema(
   {
     text: { type: String, required: true },
-    isCorrect: { type: Boolean, default: false } // helpful if multiple correct answers are needed
+    isCorrect: { type: Boolean, default: false }
   },
   { _id: false }
 );
@@ -32,12 +32,10 @@ const questionSchema = new Schema(
       }
     },
 
-    // Correct answer
+    // Make correctAnswer completely optional
     correctAnswer: {
       type: Schema.Types.Mixed,
-      required: function () {
-        return ["mcq", "fillblank", "shortanswer", "matching"].includes(this.questionType);
-      }
+      required: false // No validation, completely optional
     },
 
     // Store Cloudinary image URL
@@ -46,18 +44,24 @@ const questionSchema = new Schema(
   { _id: false }
 );
 
-// ✅ Quiz schema
-const quizSchema = new Schema(
+// ✅ Main QuizItem schema
+const quizItemSchema = new Schema(
   {
-    className: { type: String, required: true, trim: true }, // e.g., "3"
-    subject: { type: String, required: true, trim: true },   // e.g., "Math"
-    book: { type: String, required: true, trim: true },      // e.g., "NCERT"
-    title: { type: String, required: true, trim: true },     // e.g., "Quiz 1"
-    chapter: { type: String, required: true, trim: true },   // e.g., "Chapter 2"
-    status: { type: Boolean, default: true },                // Active/Inactive
-    questions: { type: [questionSchema], default: [] }
+    className: { type: String, required: true },
+    subject: { type: String, required: true },
+    book: { type: String, required: true },
+    title: { type: String, required: true },
+    chapter: { type: String, required: true },
+    status: { type: Boolean, default: true },
+    questions: {
+      type: [questionSchema],
+      validate: {
+        validator: (val) => Array.isArray(val) && val.length > 0,
+        message: "At least one question is required"
+      }
+    }
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("QuizItem", quizSchema);
+module.exports = mongoose.model("QuizItem", quizItemSchema);

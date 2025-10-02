@@ -1027,7 +1027,7 @@ app.post('/quizItems', async (req, res) => {
       });
     }
 
-    // ✅ Validate each question - removed correctAnswer validation
+    // ✅ Validate each question - REMOVED correctAnswer validation completely
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       

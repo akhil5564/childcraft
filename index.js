@@ -1010,9 +1010,9 @@ app.post('/quizItems', async (req, res) => {
   try {
     console.log("📩 Incoming quiz data:", JSON.stringify(req.body, null, 2));
     
-    const { className, subject, book, title, chapter, status, questions } = req.body;
+    const { className, subject, book, title, chapter, questions } = req.body;
 
-    // ✅ Validation
+    // ✅ Validation - removed status validation
     if (!className || !subject || !book || !chapter) {
       return res.status(400).json({ 
         message: 'Missing required fields: className, subject, book, chapter',
@@ -1027,22 +1027,13 @@ app.post('/quizItems', async (req, res) => {
       });
     }
 
-    // ✅ Validate each question
+    // ✅ Validate each question - removed correctAnswer validation
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
       if (!q.questionType || !q.question || !q.marks) {
         return res.status(400).json({
           message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
-          question: q
-        });
-      }
-
-      // Check if correctAnswer is required for this question type
-      const requiresAnswer = ["mcq", "fillblank", "shortanswer", "matching"].includes(q.questionType);
-      if (requiresAnswer && !q.correctAnswer) {
-        return res.status(400).json({
-          message: `Question ${i + 1}: correctAnswer is required for ${q.questionType} questions`,
           question: q
         });
       }
@@ -1058,21 +1049,20 @@ app.post('/quizItems', async (req, res) => {
 
     console.log("✅ Validation passed, creating quiz...");
 
-    // ✅ Create new Quiz
+    // ✅ Create new Quiz - status defaults to true
     const newQuiz = new QuizItem({
       className,
       subject,
       book,
-      title: title || `Quiz for ${chapter}`, // Default title if not provided
+      title: title || `Quiz for ${chapter}`,
       chapter,
-      status: status === undefined ? true : status,
       questions
     });
 
     await newQuiz.save();
     console.log("✅ Quiz saved successfully:", newQuiz._id);
 
-    // ✅ Custom Response
+    // ✅ Custom Response - removed correctAnswer from response
     res.status(201).json({
       id: newQuiz._id.toString(),
       className: newQuiz.className,
@@ -1080,7 +1070,6 @@ app.post('/quizItems', async (req, res) => {
       book: newQuiz.book,
       title: newQuiz.title,
       chapter: newQuiz.chapter,
-      status: newQuiz.status,
       questions: newQuiz.questions.map(q => ({
         questionType: q.questionType,
         question: q.question,
@@ -1089,8 +1078,7 @@ app.post('/quizItems', async (req, res) => {
           text: opt.text, 
           isCorrect: opt.isCorrect 
         })) : [],
-        correctAnswer: q.correctAnswer,
-        imageUrl: q.imageUrl || null // Include imageUrl if present
+        imageUrl: q.imageUrl || null
       })),
       createdAt: newQuiz.createdAt.toISOString(),
       message: 'Quiz created successfully'

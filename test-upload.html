@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Image Upload</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; }
+        #result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9; }
+        img { max-width: 300px; max-height: 300px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Image Upload Test</h1>
+    
+    <div class="section">
+        <h3>1. Test Cloudinary Connection</h3>
+        <button onclick="testCloudinary()">Test Cloudinary</button>
+        <button onclick="checkEnv()">Check Environment</button>
+    </div>
+    
+    <div class="section">
+        <h3>2. Upload Image (Disk Storage)</h3>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" id="imageInput" name="image" accept="image/*" required>
+            <button type="submit">Upload to /upload</button>
+        </form>
+    </div>
+    
+    <div class="section">
+        <h3>3. Upload Image (Memory Storage)</h3>
+        <form id="uploadDirectForm" enctype="multipart/form-data">
+            <input type="file" id="imageDirectInput" name="image" accept="image/*" required>
+            <button type="submit">Upload to /upload-direct</button>
+        </form>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        function showResult(title, data, isError = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <h4 style="color: ${isError ? 'red' : 'green'}">${title}</h4>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+                ${data.url ? `<img src="${data.url}" alt="Uploaded image">` : ''}
+            `;
+        }
+
+        async function testCloudinary() {
+            try {
+                const response = await fetch('/test-cloudinary');
+                const result = await response.json();
+                showResult('Cloudinary Test Result', result, !response.ok);
+            } catch (error) {
+                showResult('Cloudinary Test Error', { error: error.message }, true);
+            }
+        }
+
+        async function checkEnv() {
+            try {
+                const response = await fetch('/check-env');
+                const result = await response.json();
+                showResult('Environment Variables', result);
+            } catch (error) {
+                showResult('Environment Check Error', { error: error.message }, true);
+            }
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            const file = document.getElementById('imageInput').files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+            
+            formData.append('image', file);
+            
+            try {
+                showResult('Uploading...', { status: 'Please wait...' });
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                showResult('Upload Result (/upload)', result, !response.ok);
+            } catch (error) {
+                showResult('Upload Error', { error: error.message }, true);
+            }
+        });
+
+        document.getElementById('uploadDirectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            const file = document.getElementById('imageDirectInput').files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+            
+            formData.append('image', file);
+            
+            try {
+                showResult('Uploading Direct...', { status: 'Please wait...' });
+                const response = await fetch('/upload-direct', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                showResult('Direct Upload Result (/upload-direct)', result, !response.ok);
+            } catch (error) {
+                showResult('Direct Upload Error', { error: error.message }, true);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1008,28 +1008,69 @@ app.delete('/books/:id', async (req, res) => {
 // ✅ Create Quiz Item
 app.post('/quizItems', async (req, res) => {
   try {
+    console.log("📩 Incoming quiz data:", JSON.stringify(req.body, null, 2));
+    
     const { className, subject, book, title, chapter, status, questions } = req.body;
 
     // ✅ Validation
     if (!className || !subject || !book || !chapter) {
-      return res.status(400).json({ message: 'Missing required fields: className, subject, book, chapter' });
+      return res.status(400).json({ 
+        message: 'Missing required fields: className, subject, book, chapter',
+        received: { className, subject, book, chapter }
+      });
     }
+    
     if (!Array.isArray(questions) || questions.length === 0) {
-      return res.status(400).json({ message: 'questions must be a non-empty array' });
+      return res.status(400).json({ 
+        message: 'questions must be a non-empty array',
+        received: questions
+      });
     }
+
+    // ✅ Validate each question
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      
+      if (!q.questionType || !q.question || !q.marks) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
+          question: q
+        });
+      }
+
+      // Check if correctAnswer is required for this question type
+      const requiresAnswer = ["mcq", "fillblank", "shortanswer", "matching"].includes(q.questionType);
+      if (requiresAnswer && !q.correctAnswer) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: correctAnswer is required for ${q.questionType} questions`,
+          question: q
+        });
+      }
+
+      // Check if MCQ has options
+      if (q.questionType === "mcq" && (!q.options || !Array.isArray(q.options) || q.options.length === 0)) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: MCQ must have options array`,
+          question: q
+        });
+      }
+    }
+
+    console.log("✅ Validation passed, creating quiz...");
 
     // ✅ Create new Quiz
     const newQuiz = new QuizItem({
       className,
       subject,
-      book,      // ✅ store bookId
-      title,     // optional quiz title
-      chapter,   // chapterId
+      book,
+      title: title || `Quiz for ${chapter}`, // Default title if not provided
+      chapter,
       status: status === undefined ? true : status,
       questions
     });
 
     await newQuiz.save();
+    console.log("✅ Quiz saved successfully:", newQuiz._id);
 
     // ✅ Custom Response
     res.status(201).json({
@@ -1037,22 +1078,41 @@ app.post('/quizItems', async (req, res) => {
       className: newQuiz.className,
       subject: newQuiz.subject,
       book: newQuiz.book,
+      title: newQuiz.title,
       chapter: newQuiz.chapter,
       status: newQuiz.status,
       questions: newQuiz.questions.map(q => ({
         questionType: q.questionType,
         question: q.question,
         marks: q.marks,
-        options: q.options.map(opt => ({ text: opt.text })),
-        image: q.image
+        options: q.options ? q.options.map(opt => ({ 
+          text: opt.text, 
+          isCorrect: opt.isCorrect 
+        })) : [],
+        correctAnswer: q.correctAnswer,
+        imageUrl: q.imageUrl || null // Include imageUrl if present
       })),
       createdAt: newQuiz.createdAt.toISOString(),
-      message: 'Question created successfully'
+      message: 'Quiz created successfully'
     });
 
   } catch (err) {
-    console.error('🔴 Server error (create question):', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Server error (create quiz):', err);
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: Object.keys(err.errors).map(key => ({
+          field: key,
+          message: err.errors[key].message
+        }))
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Server error',
+      error: err.message 
+    });
   }
 });
 // Get QuizItem by ID
@@ -1132,6 +1192,79 @@ app.put('/quizItems/:id', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error updating quiz item:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Add this route after your POST /quizItems route
+
+// GET all QuizItems with filtering and pagination
+app.get('/quizItems', async (req, res) => {
+  try {
+    const { 
+      className, 
+      subject, 
+      book, 
+      chapter, 
+      status,
+      page = 1, 
+      limit = 10,
+      search 
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+    if (className) filter.className = className;
+    if (subject) filter.subject = new RegExp(subject, 'i');
+    if (book) filter.book = new RegExp(book, 'i');
+    if (chapter) filter.chapter = new RegExp(chapter, 'i');
+    if (status !== undefined) filter.status = status === 'true';
+
+    // Add text search across multiple fields
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, 'i') },
+        { subject: new RegExp(search, 'i') },
+        { book: new RegExp(search, 'i') },
+        { chapter: new RegExp(search, 'i') },
+        { 'questions.question': new RegExp(search, 'i') }
+      ];
+    }
+
+    console.log('🔍 QuizItems filter:', filter);
+
+    // Get total count for pagination
+    const total = await QuizItem.countDocuments(filter);
+
+    // Get quizzes with pagination
+    const quizzes = await QuizItem.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .lean();
+
+    res.json({
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / limit),
+      quizzes: quizzes.map(quiz => ({
+        id: quiz._id.toString(),
+        className: quiz.className,
+        subject: quiz.subject,
+        book: quiz.book,
+        title: quiz.title,
+        chapter: quiz.chapter,
+        status: quiz.status,
+        questionCount: quiz.questions.length,
+        hasImages: quiz.questions.some(q => q.imageUrl),
+        createdAt: quiz.createdAt.toISOString(),
+        updatedAt: quiz.updatedAt.toISOString()
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching QuizItems:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

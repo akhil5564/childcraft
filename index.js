@@ -6,6 +6,9 @@ const cors = require('cors'); // ✅ Added CORS
 
 const User = require('./model/User');
 const Chapter = require('./model/Chapter');  // ✅ correct path
+const multer = require('multer');
+const cloudinary = require('./cloudinary');
+
 
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
@@ -164,7 +167,6 @@ app.get('/users', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
-
 
 // Update user status
 app.patch('/users/:id/status', async (req, res) => {
@@ -452,7 +454,206 @@ app.post('/chapter', async (req, res) => {
   }
 });
 
+const fs = require('fs');
+const path = require('path');
 
+// ✅ Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, 'uploads');
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
+// Test Cloudinary configuration endpoint
+app.get('/test-cloudinary', async (req, res) => {
+  try {
+    console.log("🔍 Testing Cloudinary configuration...");
+    console.log("Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME);
+    console.log("API Key:", process.env.CLOUDINARY_API_KEY);
+    console.log("API Secret length:", process.env.CLOUDINARY_API_SECRET?.length);
+    
+    // Test a simple API call
+    const result = await cloudinary.api.ping();
+    res.json({
+      status: "✅ Cloudinary connection successful",
+      result: result
+    });
+  } catch (error) {
+    console.error("❌ Cloudinary test failed:", error);
+    res.status(500).json({ 
+      error: error.message,
+      details: error.error?.message || "Unknown error"
+    });
+  }
+});
+
+// Add better error handling for multer
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large. Maximum size is 5MB.' });
+    }
+    return res.status(400).json({ error: error.message });
+  }
+  next(error);
+});
+
+// Enhanced upload route with better error handling
+app.post("/upload", upload.single("image"), async (req, res) => {
+  try {
+    console.log("🔍 Upload request received");
+    
+    // Check environment variables
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      throw new Error("Missing Cloudinary environment variables");
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    console.log("📁 File details:", {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    });
+
+    // Check if file exists on disk
+    if (!fs.existsSync(req.file.path)) {
+      throw new Error("Uploaded file not found on disk");
+    }
+
+    console.log("🚀 Starting Cloudinary upload...");
+    
+    // Test Cloudinary connection first
+    try {
+      await cloudinary.api.ping();
+      console.log("✅ Cloudinary connection verified");
+    } catch (pingError) {
+      console.error("❌ Cloudinary ping failed:", pingError);
+      throw new Error(`Cloudinary connection failed: ${pingError.message}`);
+    }
+
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "quiz-images",
+      resource_type: "auto",
+      transformation: [
+        { width: 1000, height: 1000, crop: "limit" }, // Resize large images
+        { quality: "auto" } // Optimize quality
+      ]
+    });
+
+    console.log("✅ Cloudinary upload successful:", result.secure_url);
+
+    // Clean up temp file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+      else console.log("🗑️ Temporary file deleted");
+    });
+
+    res.json({
+      message: "Uploaded successfully",
+      url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height,
+      format: result.format,
+      size: result.bytes
+    });
+
+  } catch (err) {
+    console.error("❌ Upload error:", {
+      message: err.message,
+      name: err.name,
+      http_code: err.http_code,
+      error: err.error
+    });
+    
+    // Clean up temp file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlink(req.file.path, (unlinkErr) => {
+        if (unlinkErr) console.error("Error deleting temp file:", unlinkErr);
+      });
+    }
+    
+    res.status(500).json({ 
+      error: err.message || "Upload failed",
+      details: err.error?.message || err.http_code || "Unknown error"
+    });
+  }
+});
+
+// Alternative: Direct upload to Cloudinary without saving locally
+const uploadMemory = multer({ 
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+app.post("/upload-direct", uploadMemory.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    console.log("📁 File received in memory:", req.file.originalname);
+
+    // Upload buffer directly to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: "quiz-images", resource_type: "auto" },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(req.file.buffer);
+    });
+
+    console.log("✅ Direct upload successful:", result.secure_url);
+
+    res.json({
+      message: "Uploaded successfully",
+      url: result.secure_url,
+      public_id: result.public_id
+    });
+
+  } catch (err) {
+    console.error("❌ Direct upload error:", err);
+    res.status(500).json({ 
+      error: err.message || "Upload failed"
+    });
+  }
+});
 
 // Update chapters for a book by ID
 app.put('/chapter/:id', async (req, res) => {
@@ -488,7 +689,6 @@ app.put('/chapter/:id', async (req, res) => {
     res.status(500).json({ message: 'Server Error', error: err.message });
   }
 });
-
 
 
 // Delete a book with chapters by ID
@@ -624,8 +824,6 @@ app.get('/allbooks', async (req, res) => {
   }
 });
 
-
-
 // ----- Subject routes -----
 
 // Create subject
@@ -738,7 +936,6 @@ app.put('/books/:id', async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 // Get book by ID
 app.get('/books/:id', async (req, res) => {
@@ -939,6 +1136,20 @@ app.put('/quizItems/:id', async (req, res) => {
   }
 });
 
+// Add this route after your existing routes
+app.get('/test-upload', (req, res) => {
+  res.sendFile(path.join(__dirname, 'test-upload.html'));
+});
+
+// Add this route to check environment variables
+app.get('/check-env', (req, res) => {
+  res.json({
+    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "Missing",
+    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "Missing", 
+    CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? `Set (${process.env.CLOUDINARY_API_SECRET.length} chars)` : "Missing",
+    NODE_ENV: process.env.NODE_ENV || "development"
+  });
+});
 
 // Start server
 const PORT = process.env.PORT || 5000;

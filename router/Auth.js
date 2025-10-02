@@ -2,7 +2,7 @@ const express = require('express');
 const User = require('../model/User');
 const router = express.Router();
 
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res) => {testtest
   const { username, password } = req.body;
 
   try {
@@ -12,6 +12,7 @@ router.post('/login', async (req, res) => {
     }
 
     const isMatch = await user.comparePassword(password);
+    
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid username or password' });
     }

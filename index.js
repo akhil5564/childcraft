@@ -250,10 +250,9 @@ app.get('/qustion', async (req, res) => {
     console.log("🔍 Filter:", filter);
 
     // Fetch quizzes sorted by createdAt descending
-    // ✅ Select all question fields to ensure imageUrl is included
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
-      .select("className subject chapter book questions createdAt") // Select entire questions array
+      .select("className subject chapter book title questions createdAt")
       .lean();
 
     console.log("📊 Found quizzes:", quizzes.length);
@@ -263,14 +262,14 @@ app.get('/qustion', async (req, res) => {
       console.log("🔍 Sample quiz structure:", JSON.stringify(quizzes[0], null, 2));
     }
 
-    // Flatten into individual questions
-    let results = quizzes.flatMap(q => {
-      if (!q.questions || !Array.isArray(q.questions)) {
-        console.warn("⚠️ Quiz has no questions array:", q._id);
+    // Flatten into individual questions with question IDs
+    let results = quizzes.flatMap(quiz => {
+      if (!quiz.questions || !Array.isArray(quiz.questions)) {
+        console.warn("⚠️ Quiz has no questions array:", quiz._id);
         return [];
       }
       
-      return q.questions.map(ques => {
+      return quiz.questions.map((ques, questionIndex) => {
         console.log("🔍 Processing question:", {
           question: ques.question?.substring(0, 50),
           questionType: ques.questionType,
@@ -279,16 +278,23 @@ app.get('/qustion', async (req, res) => {
         });
         
         return {
+          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`, // Question ID
+          quizId: quiz._id.toString(), // Quiz ID
+          questionIndex: questionIndex, // Question position in quiz
           question: ques.question,
           questionType: ques.questionType,
-          imageUrl: ques.imageUrl || null, // Keep imageUrl as is
+          imageUrl: ques.imageUrl || null,
           marks: ques.marks || null,
           options: ques.options || [],
-          subject: q.subject,
-          className: q.className,
-          chapter: q.chapter,
-          book: q.book,
-          createdAt: q.createdAt
+          subject: quiz.subject,
+          className: quiz.className,
+          chapter: quiz.chapter,
+          book: quiz.book,
+          quizTitle: quiz.title,
+          createdAt: quiz.createdAt,
+          // Navigation URLs
+          quizUrl: `/quizItems/${quiz._id.toString()}`,
+          specificQuestionUrl: `/quizItems/${quiz._id.toString()}/questions/${questionIndex}`
         };
       });
     });
@@ -316,6 +322,7 @@ app.get('/qustion', async (req, res) => {
       total: results.length,
       page: Number(page),
       limit: Number(limit),
+      totalPages: Math.ceil(results.length / limit),
       data: paginated
     });
 

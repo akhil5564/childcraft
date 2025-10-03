@@ -1319,3 +1319,37 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// Delete QuizItem by ID
+app.delete('/quizItems/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🗑️ Attempting to delete QuizItem with ID: ${id}`);
+
+    const deletedQuiz = await QuizItem.findByIdAndDelete(id);
+
+    if (!deletedQuiz) {
+      return res.status(404).json({ message: 'Quiz item not found' });
+    }
+
+    console.log(`✅ QuizItem deleted successfully: ${deletedQuiz._id}`);
+
+    res.json({
+      message: 'Quiz item deleted successfully',
+      deletedId: deletedQuiz._id.toString(),
+      deletedQuiz: {
+        title: deletedQuiz.title,
+        className: deletedQuiz.className,
+        subject: deletedQuiz.subject,
+        book: deletedQuiz.book,
+        chapter: deletedQuiz.chapter,
+        questionCount: deletedQuiz.questions.length
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error deleting quiz item:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});

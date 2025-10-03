@@ -242,7 +242,7 @@ app.get('/qustion', async (req, res) => {
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
-    if (className) filter.className = String(className); // filter by class
+    if (className) filter.className = String(className);
     if (chapter) filter.chapter = new RegExp(chapter, "i");
     if (book) filter.book = new RegExp(book, "i");
     if (questionType) filter["questions.questionType"] = questionType;
@@ -250,30 +250,53 @@ app.get('/qustion', async (req, res) => {
     console.log("🔍 Filter:", filter);
 
     // Fetch quizzes sorted by createdAt descending
-    // ✅ Added imageUrl to the selection
+    // ✅ Select all question fields to ensure imageUrl is included
     const quizzes = await QuizItem.find(filter)
-      .sort({ createdAt: -1 }) // newest first
-      .select("className subject chapter book questions.question questions.questionType questions.imageUrl questions.marks questions.options createdAt")
+      .sort({ createdAt: -1 })
+      .select("className subject chapter book questions createdAt") // Select entire questions array
       .lean();
 
-    // Flatten into individual questions
-    // ✅ Added imageUrl to the response
-    let results = quizzes.flatMap(q =>
-      q.questions.map(ques => ({
-        question: ques.question,
-        questionType: ques.questionType,
-        imageUrl: ques.imageUrl || null, // Include image URL
-        marks: ques.marks || null,
-        options: ques.options || [],
-        subject: q.subject,
-        className: q.className,
-        chapter: q.chapter,
-        book: q.book,
-        createdAt: q.createdAt
-      }))
-    );
+    console.log("📊 Found quizzes:", quizzes.length);
+    
+    // Debug: Log first quiz to check structure
+    if (quizzes.length > 0) {
+      console.log("🔍 Sample quiz structure:", JSON.stringify(quizzes[0], null, 2));
+    }
 
-    // Extra text search (q can match question, chapter, subject, book)
+    // Flatten into individual questions
+    let results = quizzes.flatMap(q => {
+      if (!q.questions || !Array.isArray(q.questions)) {
+        console.warn("⚠️ Quiz has no questions array:", q._id);
+        return [];
+      }
+      
+      return q.questions.map(ques => {
+        console.log("🔍 Processing question:", {
+          question: ques.question?.substring(0, 50),
+          questionType: ques.questionType,
+          imageUrl: ques.imageUrl,
+          hasImageUrl: !!ques.imageUrl
+        });
+        
+        return {
+          question: ques.question,
+          questionType: ques.questionType,
+          imageUrl: ques.imageUrl || null, // Keep imageUrl as is
+          marks: ques.marks || null,
+          options: ques.options || [],
+          subject: q.subject,
+          className: q.className,
+          chapter: q.chapter,
+          book: q.book,
+          createdAt: q.createdAt
+        };
+      });
+    });
+
+    console.log("📊 Total questions found:", results.length);
+    console.log("📊 Questions with images:", results.filter(r => r.imageUrl).length);
+
+    // Extra text search
     if (q) {
       const regex = new RegExp(q, "i");
       results = results.filter(item =>
@@ -297,7 +320,7 @@ app.get('/qustion', async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error fetching quizzes:", err);
+    console.error("❌ Error fetching questions:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
@@ -1124,20 +1147,27 @@ app.get('/quizItems/:id', async (req, res) => {
       className: quiz.className,
       subject: quiz.subject,
       book: quiz.book,
+      title: quiz.title,
       chapter: quiz.chapter,
       status: quiz.status,
-      questions: quiz.questions.map(q => ({
+      questions: quiz.questions.map((q, index) => ({
+        questionIndex: index,
         questionType: q.questionType,
         question: q.question,
         marks: q.marks,
-        options: q.options.map(opt => ({ text: opt.text })),
-        image: q.image
+        options: q.options || [],
+        correctAnswer: q.correctAnswer || null,
+        imageUrl: q.imageUrl || null
       })),
-      createdAt: quiz.createdAt.toISOString()
+      questionCount: quiz.questions.length,
+      totalMarks: quiz.questions.reduce((sum, q) => sum + (q.marks || 0), 0),
+      hasImages: quiz.questions.some(q => q.imageUrl),
+      createdAt: quiz.createdAt.toISOString(),
+      updatedAt: quiz.updatedAt.toISOString()
     });
 
   } catch (err) {
-    console.error('❌ Error fetching quiz item:', err);
+    console.error('❌ Error fetching full quiz data:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

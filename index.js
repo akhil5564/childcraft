@@ -250,16 +250,21 @@ app.get('/qustion', async (req, res) => {
     console.log("🔍 Filter:", filter);
 
     // Fetch quizzes sorted by createdAt descending
+    // ✅ Added imageUrl to the selection
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 }) // newest first
-      .select("className subject chapter book questions.question questions.questionType createdAt")
+      .select("className subject chapter book questions.question questions.questionType questions.imageUrl questions.marks questions.options createdAt")
       .lean();
 
     // Flatten into individual questions
+    // ✅ Added imageUrl to the response
     let results = quizzes.flatMap(q =>
       q.questions.map(ques => ({
         question: ques.question,
         questionType: ques.questionType,
+        imageUrl: ques.imageUrl || null, // Include image URL
+        marks: ques.marks || null,
+        options: ques.options || [],
         subject: q.subject,
         className: q.className,
         chapter: q.chapter,

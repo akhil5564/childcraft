@@ -1353,3 +1353,47 @@ app.delete('/quizItems/:id', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
+
+// Get chapter by ID with full details
+app.get('/chapter/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log(`🔍 Getting chapter with ID: ${id}`);
+
+    // Find chapter document by ID and populate book details
+    const chapterDoc = await Chapter.findById(id)
+      .populate('book', 'book code subject class') // Populate book details
+      .lean();
+
+    if (!chapterDoc) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    // Format the response with all required details
+    res.json({
+      id: chapterDoc._id.toString(),
+      subject: chapterDoc.subject,
+      class: chapterDoc.class,
+      book: {
+        id: chapterDoc.book._id.toString(),
+        name: chapterDoc.book.book,
+        code: chapterDoc.book.code,
+        subject: chapterDoc.book.subject,
+        class: chapterDoc.book.class
+      },
+      chapters: chapterDoc.chapters.map(ch => ({
+        id: ch._id.toString(),
+        chapterName: ch.chapterName,
+        number: ch.number
+      })),
+      chapterCount: chapterDoc.chapters.length,
+      createdAt: chapterDoc.createdAt?.toISOString(),
+      updatedAt: chapterDoc.updatedAt?.toISOString()
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching chapter by ID:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});

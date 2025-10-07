@@ -857,6 +857,7 @@ app.post('/books', async (req, res) => {
   }
 });
 
+// Check if book exists
 
 
 // ✅ Search Books
@@ -898,8 +899,6 @@ app.get('/allbooks', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
-
 
 
 
@@ -1455,6 +1454,29 @@ app.get('/chapter/:id', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error fetching chapter by ID:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Get all subjects with chapters and classes
+app.get('/subjectAll', async (req, res) => {
+  try {
+    // Get unique subjects and sort alphabetically
+    const subjects = await Subject.find()
+      .select('name -_id')  // Select only name field, exclude _id
+      .sort({ name: 1 })    // Sort alphabetically
+      .lean();              // Convert to plain JS object
+
+    // Format response
+    res.json({
+      total: subjects.length,
+      results: subjects.map(s => ({
+        subject: s.name.toLowerCase()
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching subjects:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

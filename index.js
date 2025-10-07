@@ -728,6 +728,53 @@ app.put('/chapter/:id', async (req, res) => {
 });
 
 
+app.put('/chapter/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const updatedChapter = await Chapter.findByIdAndUpdate(
+      id,
+      { 
+        $set: updateData
+      },
+      { 
+        new: true,        // Return updated document
+        runValidators: true,  // Run schema validations
+        timestamps: true      // Ensure timestamps are updated
+      }
+    ).populate('book', 'book code subject class');
+
+    if (!updatedChapter) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    res.json({
+      id: updatedChapter._id.toString(),
+      subject: updatedChapter.subject,
+      class: updatedChapter.class,
+      book: {
+        id: updatedChapter.book._id.toString(),
+        name: updatedChapter.book.book,
+        code: updatedChapter.book.code,
+        subject: updatedChapter.book.subject,
+        class: updatedChapter.book.class
+      },
+      chapters: updatedChapter.chapters.map(ch => ({
+        id: ch._id.toString(),
+        chapterName: ch.chapterName,
+        number: ch.number
+      })),
+      createdAt: updatedChapter.createdAt.toISOString(),
+      updatedAt: updatedChapter.updatedAt.toISOString()  // Include updatedAt in response
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating chapter:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 // Delete a book with chapters by ID
 app.delete('/chapter/:id', async (req, res) => {
   try {

@@ -420,14 +420,17 @@ app.get('/chapterd', async (req, res) => {
       ];
     }
 
+    // Get total count before filtering by book
+    const totalCount = await Chapter.countDocuments(filter);
+
     // Fetch chapters with populate + book filter and sort by createdAt descending
     const chapters = await Chapter.find(filter)
       .populate({
         path: "book",
-        select: "book -_id",
+        select: "book code -_id",
         match: book ? { book: new RegExp(book, "i") } : {}
       })
-      .sort({ createdAt: -1 }) // Added sorting - newest first
+      .sort({ createdAt: -1 }) // Sort by creation date, newest first
       .skip(skip)
       .limit(Number(pageSize))
       .lean();
@@ -435,26 +438,37 @@ app.get('/chapterd', async (req, res) => {
     // Remove items where book didn't match
     const filteredChapters = chapters.filter(ch => ch.book !== null);
 
-    const total = filteredChapters.length;
-
+    // Map results with proper date formatting
     const results = filteredChapters.map(ch => ({
-      ...ch,
+      id: ch._id.toString(),
+      subject: ch.subject,
+      class: ch.class,
       book: ch.book?.book || null,
-      createdAt: ch.createdAt?.toISOString(), // Include createdAt in response
-      updatedAt: ch.updatedAt?.toISOString()  // Include updatedAt in response
+      chapters: ch.chapters.map(chapter => ({
+        id: chapter._id.toString(),
+        chapterName: chapter.chapterName,
+        number: chapter.number
+      })),
+      createdAt: ch.createdAt ? new Date(ch.createdAt).toISOString() : null,
+      updatedAt: ch.updatedAt ? new Date(ch.updatedAt).toISOString() : null
     }));
 
     res.json({
-      total,
+      total: totalCount, // Total before book filtering
+      filtered: results.length, // Total after book filtering
       page: Number(page),
       pageSize: Number(pageSize),
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.ceil(totalCount / pageSize),
       results
     });
 
   } catch (err) {
     console.error("❌ Error fetching chapters:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ 
+      message: "Server error", 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 

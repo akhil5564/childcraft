@@ -1359,18 +1359,16 @@ app.get('/chapter/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log(`🔍 Getting chapter with ID: ${id}`);
-
-    // Find chapter document by ID and populate book details
+    // Find chapter and populate book details
     const chapterDoc = await Chapter.findById(id)
-      .populate('book', 'book code subject class') // Populate book details
+      .populate('book', 'book code subject class')
       .lean();
 
     if (!chapterDoc) {
       return res.status(404).json({ message: 'Chapter not found' });
     }
 
-    // Format the response with all required details
+    // Return formatted response
     res.json({
       id: chapterDoc._id.toString(),
       subject: chapterDoc.subject,

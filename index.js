@@ -928,7 +928,6 @@ app.get('/allbooks', async (req, res) => {
   }
 });
 
-
 // Get all books
 app.get('/allbooks', async (req, res) => {
   try {
@@ -1730,6 +1729,71 @@ app.get('/schools', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error fetching schools:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// Update school status
+app.patch('/schools/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Validate status is provided and is boolean
+    if (typeof status !== 'boolean') {
+      return res.status(400).json({ 
+        message: 'Status must be a boolean value (true/false)' 
+      });
+    }
+
+    // Update user status
+    const updatedSchool = await User.findOneAndUpdate(
+      { _id: id, role: 'school' },
+      { 
+        $set: { 
+          status,
+          'schoolDetails.status': status 
+        } 
+      },
+      { 
+        new: true,
+        select: '-password',
+        runValidators: true 
+      }
+    ).populate('schoolDetails.books', 'book subject class -_id');
+
+    if (!updatedSchool) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    res.json({
+      message: `School ${status ? 'activated' : 'deactivated'} successfully`,
+      school: {
+        id: updatedSchool._id,
+        username: updatedSchool.username,
+        status: updatedSchool.status,
+        schoolDetails: {
+          schoolName: updatedSchool.schoolDetails?.schoolName,
+          schoolCode: updatedSchool.schoolDetails?.schoolCode,
+          executive: updatedSchool.schoolDetails?.executive,
+          phone1: updatedSchool.schoolDetails?.phone1,
+          phone2: updatedSchool.schoolDetails?.phone2,
+          books: updatedSchool.schoolDetails?.books || [],
+          principalName: updatedSchool.schoolDetails?.principalName,
+          examIncharge: updatedSchool.schoolDetails?.examIncharge,
+          email: updatedSchool.schoolDetails?.email,
+          address: updatedSchool.schoolDetails?.address,
+          status: updatedSchool.schoolDetails?.status
+        },
+        updatedAt: updatedSchool.updatedAt.toISOString()
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating school status:', err);
     res.status(500).json({ 
       message: 'Server error', 
       error: err.message 

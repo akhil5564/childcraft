@@ -410,24 +410,24 @@ app.get('/chapterd', async (req, res) => {
 
     let filter = {};
 
-    // ✅ Apply filters with partial match
-    if (subject) filter.subject = new RegExp(subject, "i"); // case-insensitive
+    // Apply filters with partial match
+    if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.class = new RegExp(className, "i");
     if (search) {
-      // Search across multiple fields (subject, class, etc.)
       filter.$or = [
         { subject: new RegExp(search, "i") },
         { class: new RegExp(search, "i") }
       ];
     }
 
-    // Fetch chapters with populate + book filter
+    // Fetch chapters with populate + book filter and sort by createdAt descending
     const chapters = await Chapter.find(filter)
       .populate({
         path: "book",
         select: "book -_id",
-        match: book ? { book: new RegExp(book, "i") } : {} // partial book match
+        match: book ? { book: new RegExp(book, "i") } : {}
       })
+      .sort({ createdAt: -1 }) // Added sorting - newest first
       .skip(skip)
       .limit(Number(pageSize))
       .lean();
@@ -439,7 +439,9 @@ app.get('/chapterd', async (req, res) => {
 
     const results = filteredChapters.map(ch => ({
       ...ch,
-      book: ch.book?.book || null
+      book: ch.book?.book || null,
+      createdAt: ch.createdAt?.toISOString(), // Include createdAt in response
+      updatedAt: ch.updatedAt?.toISOString()  // Include updatedAt in response
     }));
 
     res.json({

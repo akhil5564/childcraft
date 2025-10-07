@@ -953,7 +953,7 @@ app.post('/subject', async (req, res) => {
 });
 
 // Get all subjects
-// ✅ Get subjects with pagination + search
+// ✅ Get subjects with pagination + search, sorted by createdAt descending
 app.get('/subject', async (req, res) => {
   try {
     let { page = 1, pageSize = 10, search = "" } = req.query;
@@ -966,8 +966,9 @@ app.get('/subject', async (req, res) => {
       filter.name = new RegExp(search, "i"); // case-insensitive search
     }
 
-    // Query DB
+    // Query DB with sort by createdAt descending
     const subjects = await Subject.find(filter)
+      .sort({ createdAt: -1 }) // Sort by creation date, newest first
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
@@ -981,12 +982,14 @@ app.get('/subject', async (req, res) => {
       totalPages: Math.ceil(total / pageSize),
       subjects: subjects.map(s => ({
         id: s._id,
-        name: s.name
+        name: s.name,
+        createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
+        updatedAt: s.updatedAt ? new Date(s.updatedAt).toISOString() : null
       }))
     });
   } catch (err) {
     console.error("❌ Error fetching subjects:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 

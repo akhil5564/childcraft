@@ -930,7 +930,6 @@ app.get('/allbooks', async (req, res) => {
 
 
 
-
 // Get all books
 app.get('/allbooks', async (req, res) => {
   try {
@@ -1509,5 +1508,33 @@ app.get('/subjectAll', async (req, res) => {
   } catch (err) {
     console.error('❌ Error fetching subjects:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Booked route
+app.get('/booked', async (req, res) => {
+  try {
+    // Get all books sorted by createdAt descending
+    const books = await Book.find()
+      .select('subject class _id book') // Select only needed fields
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      total: books.length,
+      results: books.map(book => ({
+        id: book._id.toString(),
+        subject: book.subject.toLowerCase(),
+        class: book.class,
+        book: book.book
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching books:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });

@@ -338,29 +338,48 @@ app.get('/qustion', async (req, res) => {
 // ✅ Get books with subject & class filter
 app.get('/books', async (req, res) => {
   try {
-    console.log("🔍 Incoming filters:", req.query);
+    console.log("🔍 Incoming search query:", req.query);
 
-    const { subject, class: bookClass } = req.query;
+    let { book, subject, class: bookClass, page = 1, pageSize = 10 } = req.query;
+
+    page = Number(page);
+    pageSize = Number(pageSize);
 
     // Build filter dynamically
     const filter = {};
-    if (subject) filter.subject = new RegExp(subject, "i"); // case-insensitive match
-    if (bookClass) filter.class = String(bookClass);        // ensure string match
+    if (book) filter.book = new RegExp(book, "i"); // case-insensitive search
+    if (subject) filter.subject = new RegExp(subject, "i");
+    if (bookClass) filter.class = String(bookClass);
 
     console.log("🛠 Applying filter:", filter);
 
-    // Fetch matching books (id + book fields)
-    const books = await Book.find(filter, "book").lean();
+    // Fetch books with pagination and sort by createdAt descending
+    const books = await Book.find(filter)
+      .sort({ createdAt: -1 })  // Sort by creation date, newest first
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    const total = await Book.countDocuments(filter);
 
     res.json({
-      books: books.map(b => ({
-        id: b._id,   // ✅ MongoDB ObjectId
-        book: b.book
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+      results: books.map(b => ({
+        id: b._id,
+        book: b.book,
+        subject: b.subject,
+        class: b.class,
+        code: b.code,
+        createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : null,
+        updatedAt: b.updatedAt ? new Date(b.updatedAt).toISOString() : null
       }))
     });
 
   } catch (err) {
-    console.error("❌ Error fetching books:", err);
+    console.error("❌ Error while searching books:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
@@ -870,16 +889,17 @@ app.get('/allbooks', async (req, res) => {
     page = Number(page);
     pageSize = Number(pageSize);
 
-    // ✅ Build filter dynamically
+    // Build filter dynamically
     const filter = {};
     if (book) filter.book = new RegExp(book, "i"); // case-insensitive search
     if (subject) filter.subject = new RegExp(subject, "i");
-    if (bookClass) filter.class = Number(bookClass); // ensure numeric match
+    if (bookClass) filter.class = String(bookClass);
 
     console.log("🛠 Applying filter:", filter);
 
-    // ✅ Fetch books with pagination
+    // Fetch books with pagination and sort by createdAt descending
     const books = await Book.find(filter)
+      .sort({ createdAt: -1 })  // Sort by creation date, newest first
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
@@ -887,11 +907,19 @@ app.get('/allbooks', async (req, res) => {
     const total = await Book.countDocuments(filter);
 
     res.json({
-      total,                        // total matched books
-      page,                         // current page
-      pageSize,                     // page size requested
+      total,
+      page,
+      pageSize,
       totalPages: Math.ceil(total / pageSize),
-      results: books                // current page books
+      results: books.map(b => ({
+        id: b._id,
+        book: b.book,
+        subject: b.subject,
+        class: b.class,
+        code: b.code,
+        createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : null,
+        updatedAt: b.updatedAt ? new Date(b.updatedAt).toISOString() : null
+      }))
     });
 
   } catch (err) {

@@ -929,7 +929,6 @@ app.get('/allbooks', async (req, res) => {
 });
 
 
-
 // Get all books
 app.get('/allbooks', async (req, res) => {
   try {
@@ -1532,6 +1531,117 @@ app.get('/booked', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error fetching books:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// Create School User
+app.post('/school-user', async (req, res) => {
+  try {
+    const {
+      schoolName,
+      schoolCode,
+      executive,
+      phone1,
+      phone2,
+      books,
+      principalName,
+      examIncharge,
+      email,
+      address,
+      username,
+      password
+    } = req.body;
+
+    // Validate required fields
+    if (!schoolName || !schoolCode || !username || !password || !email) {
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        required: ['schoolName', 'schoolCode', 'username', 'password', 'email']
+      });
+    }
+
+    // Check if username already exists
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Username already taken' });
+    }
+
+    // Validate books array
+    if (books && !Array.isArray(books)) {
+      return res.status(400).json({ message: 'Books must be an array' });
+    }
+
+    // Validate book IDs exist
+    if (books && books.length > 0) {
+      const validBooks = await Book.find({ _id: { $in: books } });
+      if (validBooks.length !== books.length) {
+        return res.status(400).json({ message: 'One or more book IDs are invalid' });
+      }
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create new user with school details
+    const newUser = new User({
+      username,
+      password: hashedPassword,
+      role: 'school',
+      status: true,
+      schoolDetails: {
+        schoolName,
+        schoolCode,
+        executive,
+        phone1,
+        phone2,
+        books,
+        principalName,
+        examIncharge,
+        email,
+        address
+      }
+    });
+
+    await newUser.save();
+
+    // Return success response without password
+    res.status(201).json({
+      message: 'School user created successfully',
+      user: {
+        id: newUser._id,
+        username: newUser.username,
+        role: newUser.role,
+        status: newUser.status,
+        schoolDetails: {
+          schoolName: newUser.schoolDetails.schoolName,
+          schoolCode: newUser.schoolDetails.schoolCode,
+          executive: newUser.schoolDetails.executive,
+          phone1: newUser.schoolDetails.phone1,
+          phone2: newUser.schoolDetails.phone2,
+          books: newUser.schoolDetails.books,
+          principalName: newUser.schoolDetails.principalName,
+          examIncharge: newUser.schoolDetails.examIncharge,
+          email: newUser.schoolDetails.email,
+          address: newUser.schoolDetails.address
+        },
+        createdAt: newUser.createdAt.toISOString()
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error creating school user:', err);
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: Object.values(err.errors).map(e => e.message)
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Server error', 
       error: err.message 

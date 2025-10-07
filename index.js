@@ -1659,18 +1659,24 @@ app.get('/schools', async (req, res) => {
       page = 1, 
       limit = 10, 
       search = '',
-      status
+      status,
+      schoolName // Add schoolName parameter
     } = req.query;
 
     // Build filter
     let filter = { role: 'school' };
 
-    // Add search conditions
+    // Add direct schoolName filter if provided
+    if (schoolName) {
+      filter['schoolDetails.schoolName'] = new RegExp(schoolName, 'i');
+    }
+
+    // Add general search conditions
     if (search) {
       filter.$or = [
         { 'schoolDetails.schoolName': new RegExp(search, 'i') },
         { username: new RegExp(search, 'i') },
-        {  }
+        { 'schoolDetails.email': new RegExp(search, 'i') }
       ];
     }
 
@@ -1681,7 +1687,7 @@ app.get('/schools', async (req, res) => {
 
     // Get schools with pagination
     const schools = await User.find(filter)
-      .select('-password') // Exclude password
+      .select('-password')
       .populate('schoolDetails.books', 'book subject class -_id')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
@@ -1696,6 +1702,11 @@ app.get('/schools', async (req, res) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(total / Number(limit)),
+      filters: { // Add applied filters to response
+        schoolName: schoolName || null,
+        status: status !== undefined ? status === 'true' : null,
+        search: search || null
+      },
       results: schools.map(school => ({
         id: school._id,
         username: school.username,

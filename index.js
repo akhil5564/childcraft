@@ -1553,7 +1553,8 @@ app.post('/school-user', async (req, res) => {
       email,
       address,
       username,
-      password
+      password,
+      status = true // Default to true if not provided
     } = req.body;
 
     // Validate required fields
@@ -1591,7 +1592,7 @@ app.post('/school-user', async (req, res) => {
       username,
       password: hashedPassword,
       role: 'school',
-      status: true,
+      status, // Include status from request
       schoolDetails: {
         schoolName,
         schoolCode,
@@ -1602,7 +1603,8 @@ app.post('/school-user', async (req, res) => {
         principalName,
         examIncharge,
         email,
-        address
+        address,
+        status // Include status in school details
       }
     });
 
@@ -1615,7 +1617,7 @@ app.post('/school-user', async (req, res) => {
         id: newUser._id,
         username: newUser.username,
         role: newUser.role,
-        status: newUser.status,
+        status: newUser.status, // Include status in response
         schoolDetails: {
           schoolName: newUser.schoolDetails.schoolName,
           schoolCode: newUser.schoolDetails.schoolCode,
@@ -1626,7 +1628,8 @@ app.post('/school-user', async (req, res) => {
           principalName: newUser.schoolDetails.principalName,
           examIncharge: newUser.schoolDetails.examIncharge,
           email: newUser.schoolDetails.email,
-          address: newUser.schoolDetails.address
+          address: newUser.schoolDetails.address,
+          status: newUser.schoolDetails.status // Include status in school details response
         },
         createdAt: newUser.createdAt.toISOString()
       }

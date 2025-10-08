@@ -928,202 +928,235 @@ app.get('/allbooks', async (req, res) => {
   }
 });
 
-// Get all books
-app.get('/allbooks', async (req, res) => {
-  try {
-    const books = await Book.find();
-    res.json({
-      books: books.map(b => ({
-        id: b._id,
-        title: b.title,
-        subject: b.subject,
-        class: b.class
-      }))
-    });
-  } catch (err) {
-    console.error('🔴 Server error (get books):', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// ----- Subject routes -----
-
-// Create subject
-app.post('/subject', async (req, res) => {
-  try {
-    const { name } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ message: "Name is required" });
-    }
-
-    // Check duplicate
-    const existing = await Subject.findOne({ name: new RegExp(`^${name}$`, "i") });
-    if (existing) {
-      return res.status(400).json({ message: "Subject already exists" });
-    }
-
-    const newSubject = new Subject({ name });
-    await newSubject.save();
-
-    res.status(201).json({
-      id: newSubject._id,
-      name: newSubject.name,
-      message: "Subject created successfully"
-    });
-  } catch (err) {
-    console.error("❌ Error creating subject:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Get all subjects
-// ✅ Get subjects with pagination + search, sorted by createdAt descending
-app.get('/subject', async (req, res) => {
-  try {
-    let { page = 1, pageSize = 10, search = "" } = req.query;
-    page = Number(page);
-    pageSize = Number(pageSize);
-
-    // Build filter
-    const filter = {};
-    if (search) {
-      filter.name = new RegExp(search, "i"); // case-insensitive search
-    }
-
-    // Query DB with sort by createdAt descending
-    const subjects = await Subject.find(filter)
-      .sort({ createdAt: -1 }) // Sort by creation date, newest first
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
-      .lean();
-
-    const total = await Subject.countDocuments(filter);
-
-    res.json({
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-      subjects: subjects.map(s => ({
-        id: s._id,
-        name: s.name,
-        createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
-        updatedAt: s.updatedAt ? new Date(s.updatedAt).toISOString() : null
-      }))
-    });
-  } catch (err) {
-    console.error("❌ Error fetching subjects:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
-
-// Delete subject
-app.delete('/subject/:id', async (req, res) => {
+// Get school by ID
+app.get('/schools/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Subject.findByIdAndDelete(id);
-    if (!deleted) {
-      return res.status(404).json({ message: "Subject not found" });
+
+    // Find school and populate books
+    const school = await User.findOne({ 
+      _id: id, 
+      role: 'school' 
+    })
+    .select('-password')
+    .populate('schoolDetails.books', 'book subject class -_id')
+    .lean();
+
+    if (!school) {
+      return res.status(404).json({ message: 'School not found' });
     }
+
     res.json({
-      message: "Subject deleted successfully",
-      deletedId: deleted._id
+      id: school._id,
+      username: school.username,
+      status: school.status,
+      role: school.role,
+      schoolDetails: {
+        schoolName: school.schoolDetails?.schoolName,
+        schoolCode: school.schoolDetails?.schoolCode,
+        executive: school.schoolDetails?.executive,
+        phone1: school.schoolDetails?.phone1,
+        phone2: school.schoolDetails?.phone2,
+        books: school.schoolDetails?.books || [],
+        principalName: school.schoolDetails?.principalName,
+        examIncharge: school.schoolDetails?.examIncharge,
+        email: school.schoolDetails?.email,
+        address: school.schoolDetails?.address,
+        status: school.schoolDetails?.status
+      },
+      createdAt: school.createdAt.toISOString(),
+      updatedAt: school.updatedAt.toISOString()
     });
+
   } catch (err) {
-    console.error("❌ Error deleting subject:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('❌ Error fetching school:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 
-// ✅ Update book by ID
-app.put('/books/:id', async (req, res) => {
-  const { id } = req.params;
-  const { book, subject, class: bookClass, code } = req.body;
-
+// Update school status
+app.patch('/schools/:id/status', async (req, res) => {
   try {
-    const updatedBook = await Book.findByIdAndUpdate(
-      id,
-      { book, subject, class: bookClass, code },
-      { new: true }
-    );
+    const { id } = req.params;
+    const { status } = req.body;
 
-    if (!updatedBook) {
-      return res.status(404).json({ message: "Book not found" });
+    // Validate status is provided and is boolean
+    if (typeof status !== 'boolean') {
+      return res.status(400).json({ 
+        message: 'Status must be a boolean value (true/false)' 
+      });
+    }
+
+    // Update user status
+    const updatedSchool = await User.findOneAndUpdate(
+      { _id: id, role: 'school' },
+      { 
+        $set: { 
+          status,
+          'schoolDetails.status': status 
+        } 
+      },
+      { 
+        new: true,
+        select: '-password',
+        runValidators: true 
+      }
+    ).populate('schoolDetails.books', 'book subject class -_id');
+
+    if (!updatedSchool) {
+      return res.status(404).json({ message: 'School not found' });
     }
 
     res.json({
-      id: updatedBook._id, // always MongoDB ObjectId
-      message: "Book updated successfully"
+      message: `School ${status ? 'activated' : 'deactivated'} successfully`,
+      school: {
+        id: updatedSchool._id,
+        username: updatedSchool.username,
+        status: updatedSchool.status,
+        schoolDetails: {
+          schoolName: updatedSchool.schoolDetails?.schoolName,
+          schoolCode: updatedSchool.schoolDetails?.schoolCode,
+          executive: updatedSchool.schoolDetails?.executive,
+          phone1: updatedSchool.schoolDetails?.phone1,
+          phone2: updatedSchool.schoolDetails?.phone2,
+          books: updatedSchool.schoolDetails?.books || [],
+          principalName: updatedSchool.schoolDetails?.principalName,
+          examIncharge: updatedSchool.schoolDetails?.examIncharge,
+          email: updatedSchool.schoolDetails?.email,
+          address: updatedSchool.schoolDetails?.address,
+          status: updatedSchool.schoolDetails?.status
+        },
+        updatedAt: updatedSchool.updatedAt.toISOString()
+      }
     });
+
   } catch (err) {
-    console.error("❌ Server error (update book):", err);
-    res.status(500).json({ message: "Server error" });
+    console.error('❌ Error updating school status:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 
-// Get book by ID
-app.get('/books/:id', async (req, res) => {
-  const { id } = req.params;
+// Edit school details by ID
+app.put('/schools/:id', async (req, res) => {
   try {
-    const book = await Book.findById(id);
-    if (!book) {
-      return res.status(404).json({ message: 'Book not found' });
-    }
-    res.json({
-      id: book._id,
-      title: book.title,
-      subject: book.subject,
-      class: book.class
-    });
-  } catch (err) {
-    console.error('🔴 Server error (get book by id):', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+    const { id } = req.params;
+    const {
+      schoolName,
+      schoolCode,
+      executive,
+      phone1,
+      phone2,
+      books,
+      principalName,
+      examIncharge,
+      email,
+      address,
+      username
+    } = req.body;
 
-// Update book
-app.put('/books/:id', async (req, res) => {
-  const { id } = req.params;
-  const { title, subject, class: bookClass } = req.body;
-  try {
-    const updatedBook = await Book.findByIdAndUpdate(
-      id,
-      { title, subject, class: bookClass },
-      { new: true, timestamps: true }  // note: timestamps in schema handle updatedAt
-    );
-    if (!updatedBook) {
-      return res.status(404).json({ message: 'Book not found' });
+    // Validate required fields
+    if (!schoolName || !schoolCode || !username || !email) {
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        required: ['schoolName', 'schoolCode', 'username', 'email']
+      });
     }
-    res.json({
-      id: updatedBook._id,
-      title: updatedBook.title,
-      subject: updatedBook.subject,
-      class: updatedBook.class,
-      updatedAt: updatedBook.updatedAt.toISOString(),
-      message: 'Book updated successfully'
-    });
-  } catch (err) {
-    console.error('🔴 Server error (update book):', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
-// Delete book
-app.delete('/books/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const deletedBook = await Book.findByIdAndDelete(id);
-    if (!deletedBook) {
-      return res.status(404).json({ message: 'Book not found' });
-    }
-    res.json({
-      message: 'Book deleted successfully',
-      deletedId: deletedBook._id
+    // Check if username exists for other schools
+    const existingUser = await User.findOne({ 
+      username, 
+      _id: { $ne: id }, // Exclude current school
+      role: 'school'
     });
+    
+    if (existingUser) {
+      return res.status(400).json({ message: 'Username already taken by another school' });
+    }
+
+    // Validate books array if provided
+    if (books && !Array.isArray(books)) {
+      return res.status(400).json({ message: 'Books must be an array' });
+    }
+
+    // Validate book IDs exist if provided
+    if (books && books.length > 0) {
+      const validBooks = await Book.find({ _id: { $in: books } });
+      if (validBooks.length !== books.length) {
+        return res.status(400).json({ message: 'One or more book IDs are invalid' });
+      }
+    }
+
+    // Update school details
+    const updatedSchool = await User.findOneAndUpdate(
+      { _id: id, role: 'school' },
+      {
+        username,
+        schoolDetails: {
+          schoolName,
+          schoolCode,
+          executive,
+          phone1,
+          phone2,
+          books,
+          principalName,
+          examIncharge,
+          email,
+          address
+        }
+      },
+      {
+        new: true,
+        select: '-password',
+        runValidators: true
+      }
+    ).populate('schoolDetails.books', 'book subject class -_id');
+
+    if (!updatedSchool) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    res.json({
+      message: 'School details updated successfully',
+      school: {
+        id: updatedSchool._id,
+        username: updatedSchool.username,
+        status: updatedSchool.status,
+        schoolDetails: {
+          schoolName: updatedSchool.schoolDetails.schoolName,
+          schoolCode: updatedSchool.schoolDetails.schoolCode,
+          executive: updatedSchool.schoolDetails.executive,
+          phone1: updatedSchool.schoolDetails.phone1,
+          phone2: updatedSchool.schoolDetails.phone2,
+          books: updatedSchool.schoolDetails.books,
+          principalName: updatedSchool.schoolDetails.principalName,
+          examIncharge: updatedSchool.schoolDetails.examIncharge,
+          email: updatedSchool.schoolDetails.email,
+          address: updatedSchool.schoolDetails.address
+        },
+        updatedAt: updatedSchool.updatedAt.toISOString()
+      }
+    });
+
   } catch (err) {
-    console.error('🔴 Server error (delete book):', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Error updating school details:', err);
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: Object.values(err.errors).map(e => e.message)
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 
@@ -1736,6 +1769,55 @@ app.get('/schools', async (req, res) => {
   }
 });
 
+// Get school by ID
+app.get('/schools/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find school and populate books
+    const school = await User.findOne({ 
+      _id: id, 
+      role: 'school' 
+    })
+    .select('-password')
+    .populate('schoolDetails.books', 'book subject class -_id')
+    .lean();
+
+    if (!school) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    res.json({
+      id: school._id,
+      username: school.username,
+      status: school.status,
+      role: school.role,
+      schoolDetails: {
+        schoolName: school.schoolDetails?.schoolName,
+        schoolCode: school.schoolDetails?.schoolCode,
+        executive: school.schoolDetails?.executive,
+        phone1: school.schoolDetails?.phone1,
+        phone2: school.schoolDetails?.phone2,
+        books: school.schoolDetails?.books || [],
+        principalName: school.schoolDetails?.principalName,
+        examIncharge: school.schoolDetails?.examIncharge,
+        email: school.schoolDetails?.email,
+        address: school.schoolDetails?.address,
+        status: school.schoolDetails?.status
+      },
+      createdAt: school.createdAt.toISOString(),
+      updatedAt: school.updatedAt.toISOString()
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching school:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
 // Update school status
 app.patch('/schools/:id/status', async (req, res) => {
   try {
@@ -1794,6 +1876,124 @@ app.patch('/schools/:id/status', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error updating school status:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// Edit school details by ID
+app.put('/schools/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      schoolName,
+      schoolCode,
+      executive,
+      phone1,
+      phone2,
+      books,
+      principalName,
+      examIncharge,
+      email,
+      address,
+      username
+    } = req.body;
+
+    // Validate required fields
+    if (!schoolName || !schoolCode || !username || !email) {
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        required: ['schoolName', 'schoolCode', 'username', 'email']
+      });
+    }
+
+    // Check if username exists for other schools
+    const existingUser = await User.findOne({ 
+      username, 
+      _id: { $ne: id }, // Exclude current school
+      role: 'school'
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ message: 'Username already taken by another school' });
+    }
+
+    // Validate books array if provided
+    if (books && !Array.isArray(books)) {
+      return res.status(400).json({ message: 'Books must be an array' });
+    }
+
+    // Validate book IDs exist if provided
+    if (books && books.length > 0) {
+      const validBooks = await Book.find({ _id: { $in: books } });
+      if (validBooks.length !== books.length) {
+        return res.status(400).json({ message: 'One or more book IDs are invalid' });
+      }
+    }
+
+    // Update school details
+    const updatedSchool = await User.findOneAndUpdate(
+      { _id: id, role: 'school' },
+      {
+        username,
+        schoolDetails: {
+          schoolName,
+          schoolCode,
+          executive,
+          phone1,
+          phone2,
+          books,
+          principalName,
+          examIncharge,
+          email,
+          address
+        }
+      },
+      {
+        new: true,
+        select: '-password',
+        runValidators: true
+      }
+    ).populate('schoolDetails.books', 'book subject class -_id');
+
+    if (!updatedSchool) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    res.json({
+      message: 'School details updated successfully',
+      school: {
+        id: updatedSchool._id,
+        username: updatedSchool.username,
+        status: updatedSchool.status,
+        schoolDetails: {
+          schoolName: updatedSchool.schoolDetails.schoolName,
+          schoolCode: updatedSchool.schoolDetails.schoolCode,
+          executive: updatedSchool.schoolDetails.executive,
+          phone1: updatedSchool.schoolDetails.phone1,
+          phone2: updatedSchool.schoolDetails.phone2,
+          books: updatedSchool.schoolDetails.books,
+          principalName: updatedSchool.schoolDetails.principalName,
+          examIncharge: updatedSchool.schoolDetails.examIncharge,
+          email: updatedSchool.schoolDetails.email,
+          address: updatedSchool.schoolDetails.address
+        },
+        updatedAt: updatedSchool.updatedAt.toISOString()
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error updating school details:', err);
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: Object.values(err.errors).map(e => e.message)
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Server error', 
       error: err.message 

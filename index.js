@@ -1062,8 +1062,32 @@ app.put('/schools/:id', async (req, res) => {
       examIncharge,
       email,
       address,
-      username
+      username,
+      password, // Add password field
+      currentPassword // Add current password for verification
     } = req.body;
+
+    // Find existing school
+    const existingSchool = await User.findOne({ _id: id, role: 'school' });
+    
+    if (!existingSchool) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    // If password change is requested, verify current password
+    if (password) {
+      if (!currentPassword) {
+        return res.status(400).json({ 
+          message: 'Current password is required to change password' 
+        });
+      }
+
+      // Verify current password
+      const isValidPassword = await existingSchool.comparePassword(currentPassword);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+    }
 
     // Validate required fields
     if (!schoolName || !schoolCode || !username || !email) {
@@ -1076,7 +1100,7 @@ app.put('/schools/:id', async (req, res) => {
     // Check if username exists for other schools
     const existingUser = await User.findOne({ 
       username, 
-      _id: { $ne: id }, // Exclude current school
+      _id: { $ne: id },
       role: 'school'
     });
     
@@ -1097,24 +1121,32 @@ app.put('/schools/:id', async (req, res) => {
       }
     }
 
+    // Prepare update object
+    const updateData = {
+      username,
+      schoolDetails: {
+        schoolName,
+        schoolCode,
+        executive,
+        phone1,
+        phone2,
+        books,
+        principalName,
+        examIncharge,
+        email,
+        address
+      }
+    };
+
+    // Add hashed password to update if provided
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+
     // Update school details
     const updatedSchool = await User.findOneAndUpdate(
       { _id: id, role: 'school' },
-      {
-        username,
-        schoolDetails: {
-          schoolName,
-          schoolCode,
-          executive,
-          phone1,
-          phone2,
-          books,
-          principalName,
-          examIncharge,
-          email,
-          address
-        }
-      },
+      updateData,
       {
         new: true,
         select: '-password',
@@ -1122,12 +1154,9 @@ app.put('/schools/:id', async (req, res) => {
       }
     ).populate('schoolDetails.books', 'book subject class -_id');
 
-    if (!updatedSchool) {
-      return res.status(404).json({ message: 'School not found' });
-    }
-
     res.json({
       message: 'School details updated successfully',
+      passwordChanged: Boolean(password), // Indicate if password was changed
       school: {
         id: updatedSchool._id,
         username: updatedSchool.username,
@@ -1908,8 +1937,32 @@ app.put('/schools/:id', async (req, res) => {
       examIncharge,
       email,
       address,
-      username
+      username,
+      password, // Add password field
+      currentPassword // Add current password for verification
     } = req.body;
+
+    // Find existing school
+    const existingSchool = await User.findOne({ _id: id, role: 'school' });
+    
+    if (!existingSchool) {
+      return res.status(404).json({ message: 'School not found' });
+    }
+
+    // If password change is requested, verify current password
+    if (password) {
+      if (!currentPassword) {
+        return res.status(400).json({ 
+          message: 'Current password is required to change password' 
+        });
+      }
+
+      // Verify current password
+      const isValidPassword = await existingSchool.comparePassword(currentPassword);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+    }
 
     // Validate required fields
     if (!schoolName || !schoolCode || !username || !email) {
@@ -1922,7 +1975,7 @@ app.put('/schools/:id', async (req, res) => {
     // Check if username exists for other schools
     const existingUser = await User.findOne({ 
       username, 
-      _id: { $ne: id }, // Exclude current school
+      _id: { $ne: id },
       role: 'school'
     });
     
@@ -1943,24 +1996,32 @@ app.put('/schools/:id', async (req, res) => {
       }
     }
 
+    // Prepare update object
+    const updateData = {
+      username,
+      schoolDetails: {
+        schoolName,
+        schoolCode,
+        executive,
+        phone1,
+        phone2,
+        books,
+        principalName,
+        examIncharge,
+        email,
+        address
+      }
+    };
+
+    // Add hashed password to update if provided
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+
     // Update school details
     const updatedSchool = await User.findOneAndUpdate(
       { _id: id, role: 'school' },
-      {
-        username,
-        schoolDetails: {
-          schoolName,
-          schoolCode,
-          executive,
-          phone1,
-          phone2,
-          books,
-          principalName,
-          examIncharge,
-          email,
-          address
-        }
-      },
+      updateData,
       {
         new: true,
         select: '-password',
@@ -1968,12 +2029,9 @@ app.put('/schools/:id', async (req, res) => {
       }
     ).populate('schoolDetails.books', 'book subject class -_id');
 
-    if (!updatedSchool) {
-      return res.status(404).json({ message: 'School not found' });
-    }
-
     res.json({
       message: 'School details updated successfully',
+      passwordChanged: Boolean(password), // Indicate if password was changed
       school: {
         id: updatedSchool._id,
         username: updatedSchool.username,

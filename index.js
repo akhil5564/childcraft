@@ -939,7 +939,7 @@ app.get('/schools/:id', async (req, res) => {
       role: 'school' 
     })
     .select('-password')
-    .populate('schoolDetails.books', 'book subject class -_id')
+    .populate('schoolDetails.books', 'book subject class') // Removed -_id to include book IDs
     .lean();
 
     if (!school) {
@@ -957,7 +957,12 @@ app.get('/schools/:id', async (req, res) => {
         executive: school.schoolDetails?.executive,
         phone1: school.schoolDetails?.phone1,
         phone2: school.schoolDetails?.phone2,
-        books: school.schoolDetails?.books || [],
+        books: school.schoolDetails?.books.map(book => ({
+          id: book._id.toString(),
+          name: book.book,
+          subject: book.subject,
+          class: book.class
+        })) || [],
         principalName: school.schoolDetails?.principalName,
         examIncharge: school.schoolDetails?.examIncharge,
         email: school.schoolDetails?.email,
@@ -1780,7 +1785,7 @@ app.get('/schools/:id', async (req, res) => {
       role: 'school' 
     })
     .select('-password')
-    .populate('schoolDetails.books', 'book subject class -_id')
+    .populate('schoolDetails.books', 'book subject class') // Removed -_id to include book IDs
     .lean();
 
     if (!school) {
@@ -1798,7 +1803,12 @@ app.get('/schools/:id', async (req, res) => {
         executive: school.schoolDetails?.executive,
         phone1: school.schoolDetails?.phone1,
         phone2: school.schoolDetails?.phone2,
-        books: school.schoolDetails?.books || [],
+        books: school.schoolDetails?.books.map(book => ({
+          id: book._id.toString(),
+          name: book.book,
+          subject: book.subject,
+          class: book.class
+        })) || [],
         principalName: school.schoolDetails?.principalName,
         examIncharge: school.schoolDetails?.examIncharge,
         email: school.schoolDetails?.email,

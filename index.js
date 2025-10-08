@@ -13,6 +13,7 @@ const cloudinary = require('./cloudinary');
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
 const Subject = require('./model/Subject');
+const { decrypt } = require('./utils/encryption');
 
 const app = express();
 app.use(express.json());
@@ -932,22 +933,13 @@ app.get('/allbooks', async (req, res) => {
 app.get('/schools/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { includePassword } = req.query; // Add query parameter for password
 
-    // Select all fields except password by default
-    let selectFields = '-password';
-    
-    // If password is specifically requested, include all fields
-    if (includePassword === 'true') {
-      selectFields = '+password'; // Include password field
-    }
-
-    // Find school and populate books
+    // Find school and include originalPassword field
     const school = await User.findOne({ 
       _id: id, 
       role: 'school' 
     })
-    .select(selectFields)
+    .select('+originalPassword') // Include the originalPassword field
     .populate('schoolDetails.books', 'book subject class')
     .lean();
 
@@ -958,7 +950,7 @@ app.get('/schools/:id', async (req, res) => {
     res.json({
       id: school._id,
       username: school.username,
-      password: includePassword === 'true' ? school.password : undefined, // Only include if requested
+      password: school.originalPassword, // Include the original password
       status: school.status,
       role: school.role,
       schoolDetails: {
@@ -976,8 +968,7 @@ app.get('/schools/:id', async (req, res) => {
         principalName: school.schoolDetails?.principalName,
         examIncharge: school.schoolDetails?.examIncharge,
         email: school.schoolDetails?.email,
-        address: school.schoolDetails?.address,
-        status: school.schoolDetails?.status
+        address: school.schoolDetails?.address
       },
       createdAt: school.createdAt.toISOString(),
       updatedAt: school.updatedAt.toISOString()
@@ -1630,7 +1621,7 @@ app.post('/school-user', async (req, res) => {
       address,
       username,
       password,
-      status = true // Default to true if not provided
+      status = true
     } = req.body;
 
     // Validate required fields
@@ -1660,15 +1651,13 @@ app.post('/school-user', async (req, res) => {
       }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     // Create new user with school details
     const newUser = new User({
       username,
-      password: hashedPassword,
+      password, // Store original password
+      originalPassword: password, // Store original password in separate field
       role: 'school',
-      status, // Include status from request
+      status,
       schoolDetails: {
         schoolName,
         schoolCode,
@@ -1680,20 +1669,21 @@ app.post('/school-user', async (req, res) => {
         examIncharge,
         email,
         address,
-        status // Include status in school details
+        status
       }
     });
 
     await newUser.save();
 
-    // Return success response without password
+    // Return success response with password
     res.status(201).json({
       message: 'School user created successfully',
       user: {
         id: newUser._id,
         username: newUser.username,
+        password: newUser.originalPassword, // Return original password
         role: newUser.role,
-        status: newUser.status, // Include status in response
+        status: newUser.status,
         schoolDetails: {
           schoolName: newUser.schoolDetails.schoolName,
           schoolCode: newUser.schoolDetails.schoolCode,
@@ -1705,7 +1695,7 @@ app.post('/school-user', async (req, res) => {
           examIncharge: newUser.schoolDetails.examIncharge,
           email: newUser.schoolDetails.email,
           address: newUser.schoolDetails.address,
-          status: newUser.schoolDetails.status // Include status in school details response
+          status: newUser.schoolDetails.status
         },
         createdAt: newUser.createdAt.toISOString()
       }
@@ -1729,362 +1719,4 @@ app.post('/school-user', async (req, res) => {
 });
 
 // Get schools with pagination and search
-app.get('/schools', async (req, res) => {
-  try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search = '',
-      status,
-      schoolName // Add schoolName parameter
-    } = req.query;
 
-    // Build filter
-    let filter = { role: 'school' };
-
-    // Add direct schoolName filter if provided
-    if (schoolName) {
-      filter['schoolDetails.schoolName'] = new RegExp(schoolName, 'i');
-    }
-
-    // Add general search conditions
-    if (search) {
-      filter.$or = [
-        { 'schoolDetails.schoolName': new RegExp(search, 'i') },
-        { username: new RegExp(search, 'i') },
-        { 'schoolDetails.email': new RegExp(search, 'i') }
-      ];
-    }
-
-    // Add status filter if provided
-    if (status !== undefined) {
-      filter.status = status === 'true';
-    }
-
-    // Get schools with pagination
-    const schools = await User.find(filter)
-      .select('-password')
-      .populate('schoolDetails.books', 'book subject class -_id')
-      .sort({ createdAt: -1 })
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit))
-      .lean();
-
-    // Get total count for pagination
-    const total = await User.countDocuments(filter);
-
-    res.json({
-      total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(total / Number(limit)),
-      filters: { // Add applied filters to response
-        schoolName: schoolName || null,
-        status: status !== undefined ? status === 'true' : null,
-        search: search || null
-      },
-      results: schools.map(school => ({
-        id: school._id,
-        username: school.username,
-        status: school.status,
-        schoolDetails: {
-          schoolName: school.schoolDetails?.schoolName,
-          schoolCode: school.schoolDetails?.schoolCode,
-          executive: school.schoolDetails?.executive,
-          phone1: school.schoolDetails?.phone1,
-          phone2: school.schoolDetails?.phone2,
-          books: school.schoolDetails?.books || [],
-          principalName: school.schoolDetails?.principalName,
-          examIncharge: school.schoolDetails?.examIncharge,
-          email: school.schoolDetails?.email,
-          address: school.schoolDetails?.address
-        },
-        createdAt: school.createdAt.toISOString(),
-        updatedAt: school.updatedAt.toISOString()
-      }))
-    });
-
-  } catch (err) {
-    console.error('❌ Error fetching schools:', err);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: err.message 
-    });
-  }
-});
-
-// Get school by ID
-app.get('/schools/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { includePassword } = req.query; // Add query parameter for password
-
-    // Select all fields except password by default
-    let selectFields = '-password';
-    
-    // If password is specifically requested, include all fields
-    if (includePassword === 'true') {
-      selectFields = '+password'; // Include password field
-    }
-
-    // Find school and populate books
-    const school = await User.findOne({ 
-      _id: id, 
-      role: 'school' 
-    })
-    .select(selectFields)
-    .populate('schoolDetails.books', 'book subject class')
-    .lean();
-
-    if (!school) {
-      return res.status(404).json({ message: 'School not found' });
-    }
-
-    res.json({
-      id: school._id,
-      username: school.username,
-      password: includePassword === 'true' ? school.password : undefined, // Only include if requested
-      status: school.status,
-      role: school.role,
-      schoolDetails: {
-        schoolName: school.schoolDetails?.schoolName,
-        schoolCode: school.schoolDetails?.schoolCode,
-        executive: school.schoolDetails?.executive,
-        phone1: school.schoolDetails?.phone1,
-        phone2: school.schoolDetails?.phone2,
-        books: school.schoolDetails?.books.map(book => ({
-          id: book._id.toString(),
-          name: book.book,
-          subject: book.subject,
-          class: book.class
-        })) || [],
-        principalName: school.schoolDetails?.principalName,
-        examIncharge: school.schoolDetails?.examIncharge,
-        email: school.schoolDetails?.email,
-        address: school.schoolDetails?.address,
-        status: school.schoolDetails?.status
-      },
-      createdAt: school.createdAt.toISOString(),
-      updatedAt: school.updatedAt.toISOString()
-    });
-
-  } catch (err) {
-    console.error('❌ Error fetching school:', err);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: err.message 
-    });
-  }
-});
-
-// Update school status
-app.patch('/schools/:id/status', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    // Validate status is provided and is boolean
-    if (typeof status !== 'boolean') {
-      return res.status(400).json({ 
-        message: 'Status must be a boolean value (true/false)' 
-      });
-    }
-
-    // Update user status
-    const updatedSchool = await User.findOneAndUpdate(
-      { _id: id, role: 'school' },
-      { 
-        $set: { 
-          status,
-          'schoolDetails.status': status 
-        } 
-      },
-      { 
-        new: true,
-        select: '-password',
-        runValidators: true 
-      }
-    ).populate('schoolDetails.books', 'book subject class -_id');
-
-    if (!updatedSchool) {
-      return res.status(404).json({ message: 'School not found' });
-    }
-
-    res.json({
-      message: `School ${status ? 'activated' : 'deactivated'} successfully`,
-      school: {
-        id: updatedSchool._id,
-        username: updatedSchool.username,
-        status: updatedSchool.status,
-        schoolDetails: {
-          schoolName: updatedSchool.schoolDetails?.schoolName,
-          schoolCode: updatedSchool.schoolDetails?.schoolCode,
-          executive: updatedSchool.schoolDetails?.executive,
-          phone1: updatedSchool.schoolDetails?.phone1,
-          phone2: updatedSchool.schoolDetails?.phone2,
-          books: updatedSchool.schoolDetails?.books || [],
-          principalName: updatedSchool.schoolDetails?.principalName,
-          examIncharge: updatedSchool.schoolDetails?.examIncharge,
-          email: updatedSchool.schoolDetails?.email,
-          address: updatedSchool.schoolDetails?.address,
-          status: updatedSchool.schoolDetails?.status
-        },
-        updatedAt: updatedSchool.updatedAt.toISOString()
-      }
-    });
-
-  } catch (err) {
-    console.error('❌ Error updating school status:', err);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: err.message 
-    });
-  }
-});
-
-// Edit school details by ID
-app.put('/schools/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      schoolName,
-      schoolCode,
-      executive,
-      phone1,
-      phone2,
-      books,
-      principalName,
-      examIncharge,
-      email,
-      address,
-      username,
-      password, // Add password field
-      currentPassword // Add current password for verification
-    } = req.body;
-
-    // Find existing school
-    const existingSchool = await User.findOne({ _id: id, role: 'school' });
-    
-    if (!existingSchool) {
-      return res.status(404).json({ message: 'School not found' });
-    }
-
-    // If password change is requested, verify current password
-    if (password) {
-      if (!currentPassword) {
-        return res.status(400).json({ 
-          message: 'Current password is required to change password' 
-        });
-      }
-
-      // Verify current password
-      const isValidPassword = await existingSchool.comparePassword(currentPassword);
-      if (!isValidPassword) {
-        return res.status(401).json({ message: 'Current password is incorrect' });
-      }
-    }
-
-    // Validate required fields
-    if (!schoolName || !schoolCode || !username || !email) {
-      return res.status(400).json({ 
-        message: 'Missing required fields',
-        required: ['schoolName', 'schoolCode', 'username', 'email']
-      });
-    }
-
-    // Check if username exists for other schools
-    const existingUser = await User.findOne({ 
-      username, 
-      _id: { $ne: id },
-      role: 'school'
-    });
-    
-    if (existingUser) {
-      return res.status(400).json({ message: 'Username already taken by another school' });
-    }
-
-    // Validate books array if provided
-    if (books && !Array.isArray(books)) {
-      return res.status(400).json({ message: 'Books must be an array' });
-    }
-
-    // Validate book IDs exist if provided
-    if (books && books.length > 0) {
-      const validBooks = await Book.find({ _id: { $in: books } });
-      if (validBooks.length !== books.length) {
-        return res.status(400).json({ message: 'One or more book IDs are invalid' });
-      }
-    }
-
-    // Prepare update object
-    const updateData = {
-      username,
-      schoolDetails: {
-        schoolName,
-        schoolCode,
-        executive,
-        phone1,
-        phone2,
-        books,
-        principalName,
-        examIncharge,
-        email,
-        address
-      }
-    };
-
-    // Add hashed password to update if provided
-    if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
-    }
-
-    // Update school details
-    const updatedSchool = await User.findOneAndUpdate(
-      { _id: id, role: 'school' },
-      updateData,
-      {
-        new: true,
-        select: '-password',
-        runValidators: true
-      }
-    ).populate('schoolDetails.books', 'book subject class -_id');
-
-    res.json({
-      message: 'School details updated successfully',
-      passwordChanged: Boolean(password), // Indicate if password was changed
-      school: {
-        id: updatedSchool._id,
-        username: updatedSchool.username,
-        status: updatedSchool.status,
-        schoolDetails: {
-          schoolName: updatedSchool.schoolDetails.schoolName,
-          schoolCode: updatedSchool.schoolDetails.schoolCode,
-          executive: updatedSchool.schoolDetails.executive,
-          phone1: updatedSchool.schoolDetails.phone1,
-          phone2: updatedSchool.schoolDetails.phone2,
-          books: updatedSchool.schoolDetails.books,
-          principalName: updatedSchool.schoolDetails.principalName,
-          examIncharge: updatedSchool.schoolDetails.examIncharge,
-          email: updatedSchool.schoolDetails.email,
-          address: updatedSchool.schoolDetails.address
-        },
-        updatedAt: updatedSchool.updatedAt.toISOString()
-      }
-    });
-
-  } catch (err) {
-    console.error('❌ Error updating school details:', err);
-    
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        message: 'Validation Error',
-        details: Object.values(err.errors).map(e => e.message)
-      });
-    }
-    
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: err.message 
-    });
-  }
-});

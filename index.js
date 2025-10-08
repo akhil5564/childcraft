@@ -932,14 +932,23 @@ app.get('/allbooks', async (req, res) => {
 app.get('/schools/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { includePassword } = req.query; // Add query parameter for password
+
+    // Select all fields except password by default
+    let selectFields = '-password';
+    
+    // If password is specifically requested, include all fields
+    if (includePassword === 'true') {
+      selectFields = '+password'; // Include password field
+    }
 
     // Find school and populate books
     const school = await User.findOne({ 
       _id: id, 
       role: 'school' 
     })
-    .select('-password')
-    .populate('schoolDetails.books', 'book subject class') // Removed -_id to include book IDs
+    .select(selectFields)
+    .populate('schoolDetails.books', 'book subject class')
     .lean();
 
     if (!school) {
@@ -949,6 +958,7 @@ app.get('/schools/:id', async (req, res) => {
     res.json({
       id: school._id,
       username: school.username,
+      password: includePassword === 'true' ? school.password : undefined, // Only include if requested
       status: school.status,
       role: school.role,
       schoolDetails: {
@@ -1807,14 +1817,23 @@ app.get('/schools', async (req, res) => {
 app.get('/schools/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const { includePassword } = req.query; // Add query parameter for password
+
+    // Select all fields except password by default
+    let selectFields = '-password';
+    
+    // If password is specifically requested, include all fields
+    if (includePassword === 'true') {
+      selectFields = '+password'; // Include password field
+    }
 
     // Find school and populate books
     const school = await User.findOne({ 
       _id: id, 
       role: 'school' 
     })
-    .select('-password')
-    .populate('schoolDetails.books', 'book subject class') // Removed -_id to include book IDs
+    .select(selectFields)
+    .populate('schoolDetails.books', 'book subject class')
     .lean();
 
     if (!school) {
@@ -1824,6 +1843,7 @@ app.get('/schools/:id', async (req, res) => {
     res.json({
       id: school._id,
       username: school.username,
+      password: includePassword === 'true' ? school.password : undefined, // Only include if requested
       status: school.status,
       role: school.role,
       schoolDetails: {

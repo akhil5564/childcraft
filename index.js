@@ -59,26 +59,37 @@ app.post('/register', async (req, res) => {
 
 // Login user
 app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
   try {
-    const user = await User.findOne({ username });
+    const { username, password } = req.body;
+
+    // Find user with password and school details
+    const user = await User.findOne({ username })
+      .select('+password +originalPassword')
+      .populate('schoolDetails')
+      .lean();
+
     if (!user) {
-      return res.status(401).json({ message: 'Invalid username or password' });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid username or password' });
-    }
-    res.json({
+
+    // Prepare response based on role
+    const userResponse = {
       id: user._id,
       username: user.username,
       role: user.role,
       status: user.status,
-      createdAt: user.createdAt.toISOString(),
-      message: 'Login successful'
+      password: user.originalPassword,
+      displayName: user.role === 'school' ? 
+        user.schoolDetails?.schoolName : 'Admin Dashboard'
+    };
+
+    res.json({
+      message: 'Login successful',
+      user: userResponse
     });
+
   } catch (err) {
-    console.error('🔴 Server error (login):', err);
+    console.error('❌ Error during login:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

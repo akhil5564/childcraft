@@ -1605,6 +1605,95 @@ app.get('/booked', async (req, res) => {
   }
 });
 
+app.delete('/subject/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await Subject.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ message: "Subject not found" });
+    }
+    res.json({
+      message: "Subject deleted successfully",
+      deletedId: deleted._id
+    });
+  } catch (err) {
+    console.error("❌ Error deleting subject:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+//create subject
+
+app.post('/subject', async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+
+    // Check duplicate
+    const existing = await Subject.findOne({ name: new RegExp(`^${name}$`, "i") });
+    if (existing) {
+      return res.status(400).json({ message: "Subject already exists" });
+    }
+
+    const newSubject = new Subject({ name });
+    await newSubject.save();
+
+    res.status(201).json({
+      id: newSubject._id,
+      name: newSubject.name,
+      message: "Subject created successfully"
+    });
+  } catch (err) {
+    console.error("❌ Error creating subject:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+//get subject
+
+app.get('/subject', async (req, res) => {
+  try {
+    let { page = 1, pageSize = 10, search = "" } = req.query;
+    page = Number(page);
+    pageSize = Number(pageSize);
+
+    // Build filter
+    const filter = {};
+    if (search) {
+      filter.name = new RegExp(search, "i"); // case-insensitive search
+    }
+
+    // Query DB
+    const subjects = await Subject.find(filter)
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    const total = await Subject.countDocuments(filter);
+
+    res.json({
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+      subjects: subjects.map(s => ({
+        id: s._id,
+        name: s.name
+      }))
+    });
+  } catch (err) {
+    console.error("❌ Error fetching subjects:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
 // Create School User
 app.post('/school-user', async (req, res) => {
   try {

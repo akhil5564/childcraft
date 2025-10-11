@@ -1806,4 +1806,93 @@ app.post('/school-user', async (req, res) => {
 });
 
 // Get schools with pagination and search
+app.get('/schools', async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = "",
+      status,
+      schoolName,
+      schoolCode 
+    } = req.query;
+
+    // Build filter
+    let filter = { role: 'school' };
+
+    // Add search conditions
+    if (search) {
+      filter.$or = [
+        { username: new RegExp(search, 'i') },
+        { 'schoolDetails.schoolName': new RegExp(search, 'i') },
+        { 'schoolDetails.schoolCode': new RegExp(search, 'i') },
+        { 'schoolDetails.executive': new RegExp(search, 'i') },
+        { 'schoolDetails.email': new RegExp(search, 'i') }
+      ];
+    }
+
+    // Add specific filters
+    if (status !== undefined) {
+      filter.status = status === 'true';
+    }
+    if (schoolName) {
+      filter['schoolDetails.schoolName'] = new RegExp(schoolName, 'i');
+    }
+    if (schoolCode) {
+      filter['schoolDetails.schoolCode'] = new RegExp(schoolCode, 'i');
+    }
+
+    // Get schools with pagination
+    const schools = await User.find(filter)
+      .select('-password +originalPassword')
+      .populate('schoolDetails.books', 'book subject class')
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    // Get total count
+    const total = await User.countDocuments(filter);
+
+    res.json({
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)),
+      results: schools.map(school => ({
+        id: school._id,
+        username: school.username,
+        password: school.originalPassword,
+        status: school.status,
+        role: school.role,
+        schoolDetails: {
+          schoolName: school.schoolDetails?.schoolName,
+          schoolCode: school.schoolDetails?.schoolCode,
+          executive: school.schoolDetails?.executive,
+          phone1: school.schoolDetails?.phone1,
+          phone2: school.schoolDetails?.phone2,
+          books: school.schoolDetails?.books.map(book => ({
+            id: book._id.toString(),
+            name: book.book,
+            subject: book.subject,
+            class: book.class
+          })) || [],
+          principalName: school.schoolDetails?.principalName,
+          examIncharge: school.schoolDetails?.examIncharge,
+          email: school.schoolDetails?.email,
+          address: school.schoolDetails?.address
+        },
+        createdAt: school.createdAt.toISOString(),
+        updatedAt: school.updatedAt.toISOString()
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching schools:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
 

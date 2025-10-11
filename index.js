@@ -1063,8 +1063,7 @@ app.put('/schools/:id', async (req, res) => {
       email,
       address,
       username,
-      password, // Add password field
-      currentPassword // Add current password for verification
+      password
     } = req.body;
 
     // Find existing school
@@ -1072,21 +1071,6 @@ app.put('/schools/:id', async (req, res) => {
     
     if (!existingSchool) {
       return res.status(404).json({ message: 'School not found' });
-    }
-
-    // If password change is requested, verify current password
-    if (password) {
-      if (!currentPassword) {
-        return res.status(400).json({ 
-          message: 'Current password is required to change password' 
-        });
-      }
-
-      // Verify current password
-      const isValidPassword = await existingSchool.comparePassword(currentPassword);
-      if (!isValidPassword) {
-        return res.status(401).json({ message: 'Current password is incorrect' });
-      }
     }
 
     // Validate required fields
@@ -1134,13 +1118,15 @@ app.put('/schools/:id', async (req, res) => {
         principalName,
         examIncharge,
         email,
-        address
+        address,
+        status: existingSchool.status // Maintain existing status
       }
     };
 
-    // Add hashed password to update if provided
+    // If password is provided, update both password and originalPassword
     if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
+      updateData.password = password;
+      updateData.originalPassword = password;
     }
 
     // Update school details
@@ -1149,17 +1135,17 @@ app.put('/schools/:id', async (req, res) => {
       updateData,
       {
         new: true,
-        select: '-password',
+        select: '+originalPassword', // Include originalPassword in response
         runValidators: true
       }
-    ).populate('schoolDetails.books', 'book subject class -_id');
+    ).populate('schoolDetails.books', 'book subject class');
 
     res.json({
       message: 'School details updated successfully',
-      passwordChanged: Boolean(password), // Indicate if password was changed
       school: {
         id: updatedSchool._id,
         username: updatedSchool.username,
+        password: updatedSchool.originalPassword, // Include original password
         status: updatedSchool.status,
         schoolDetails: {
           schoolName: updatedSchool.schoolDetails.schoolName,
@@ -1167,7 +1153,12 @@ app.put('/schools/:id', async (req, res) => {
           executive: updatedSchool.schoolDetails.executive,
           phone1: updatedSchool.schoolDetails.phone1,
           phone2: updatedSchool.schoolDetails.phone2,
-          books: updatedSchool.schoolDetails.books,
+          books: updatedSchool.schoolDetails.books.map(book => ({
+            id: book._id.toString(),
+            name: book.book,
+            subject: book.subject,
+            class: book.class
+          })),
           principalName: updatedSchool.schoolDetails.principalName,
           examIncharge: updatedSchool.schoolDetails.examIncharge,
           email: updatedSchool.schoolDetails.email,

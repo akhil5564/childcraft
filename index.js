@@ -13,7 +13,6 @@ const cloudinary = require('./cloudinary');
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
 const Subject = require('./model/Subject');
-const { decrypt } = require('./utils/encryption');
 
 const app = express();
 app.use(express.json());
@@ -939,7 +938,7 @@ app.get('/schools/:id', async (req, res) => {
       _id: id, 
       role: 'school' 
     })
-    .select('+originalPassword') // Include the originalPassword field
+    .select('+originalPassword')  // Include originalPassword field
     .populate('schoolDetails.books', 'book subject class')
     .lean();
 
@@ -950,7 +949,7 @@ app.get('/schools/:id', async (req, res) => {
     res.json({
       id: school._id,
       username: school.username,
-      password: school.originalPassword, // Include the original password
+      password: school.originalPassword, // Include original password
       status: school.status,
       role: school.role,
       schoolDetails: {
@@ -1743,8 +1742,8 @@ app.post('/school-user', async (req, res) => {
     // Create new user with school details
     const newUser = new User({
       username,
-      password, // Store original password
-      originalPassword: password, // Store original password in separate field
+      password: password, // Store original password
+      originalPassword: password, // Store same password in originalPassword field
       role: 'school',
       status,
       schoolDetails: {
@@ -1764,7 +1763,6 @@ app.post('/school-user', async (req, res) => {
 
     await newUser.save();
 
-    // Return success response with password
     res.status(201).json({
       message: 'School user created successfully',
       user: {

@@ -62,6 +62,11 @@ app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    // Validate request body
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
     // Find user with password and school details
     const user = await User.findOne({ username })
       .select('+password +originalPassword')
@@ -69,6 +74,11 @@ app.post('/login', async (req, res) => {
       .lean();
 
     if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Check if passwords match
+    if (user.originalPassword !== password) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 

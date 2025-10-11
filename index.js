@@ -1842,9 +1842,9 @@ app.get('/schools', async (req, res) => {
       filter['schoolDetails.schoolCode'] = new RegExp(schoolCode, 'i');
     }
 
-    // Get schools with pagination
+    // Get schools with pagination - Fixed projection
     const schools = await User.find(filter)
-      .select('-password +originalPassword')
+      .select('username originalPassword status role schoolDetails createdAt updatedAt')
       .populate('schoolDetails.books', 'book subject class')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))

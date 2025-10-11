@@ -1658,8 +1658,9 @@ app.get('/subject', async (req, res) => {
       filter.name = new RegExp(search, "i"); // case-insensitive search
     }
 
-    // Query DB
+    // Query DB with sorting by createdAt in descending order
     const subjects = await Subject.find(filter)
+      .sort({ createdAt: -1 })  // Add descending sort
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
@@ -1673,7 +1674,9 @@ app.get('/subject', async (req, res) => {
       totalPages: Math.ceil(total / pageSize),
       subjects: subjects.map(s => ({
         id: s._id,
-        name: s.name
+        name: s.name,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt
       }))
     });
   } catch (err) {

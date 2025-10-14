@@ -258,15 +258,24 @@ app.delete('/users/:id', async (req, res) => {
 
 app.get('/qustion', async (req, res) => {
   try {
-    const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;
+    const { subject, className, chapters, book, questionType, q, page = 1, limit = 10 } = req.query;
 
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
-    if (chapter) filter.chapter = new RegExp(chapter, "i");
     if (book) filter.book = new RegExp(book, "i");
     if (questionType) filter["questions.questionType"] = questionType;
+
+    // Handle multiple chapters
+    if (chapters) {
+      // Split chapters string into array if it's comma-separated
+      const chapterArray = Array.isArray(chapters) ? chapters : chapters.split(',');
+      // Create regex pattern for each chapter
+      filter.chapter = { 
+        $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) 
+      };
+    }
 
     console.log("🔍 Filter:", filter);
 
@@ -299,9 +308,9 @@ app.get('/qustion', async (req, res) => {
         });
         
         return {
-          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`, // Question ID
-          quizId: quiz._id.toString(), // Quiz ID
-          questionIndex: questionIndex, // Question position in quiz
+          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+          quizId: quiz._id.toString(),
+          questionIndex: questionIndex,
           question: ques.question,
           questionType: ques.questionType,
           imageUrl: ques.imageUrl || null,
@@ -313,7 +322,6 @@ app.get('/qustion', async (req, res) => {
           book: quiz.book,
           quizTitle: quiz.title,
           createdAt: quiz.createdAt,
-          // Navigation URLs
           quizUrl: `/quizItems/${quiz._id.toString()}`,
           specificQuestionUrl: `/quizItems/${quiz._id.toString()}/questions/${questionIndex}`
         };
@@ -352,7 +360,6 @@ app.get('/qustion', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 
 
 // GET /books?class=3&subject=English

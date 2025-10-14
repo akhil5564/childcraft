@@ -258,41 +258,50 @@ app.delete('/users/:id', async (req, res) => {
 
 app.get('/qustion', async (req, res) => {
   try {
-    const { subject, className, chapters, book, questionType, q, page = 1, limit = 10 } = req.query;
+    const { 
+      subject, 
+      className, 
+      chapters, 
+      book, 
+      questionTypes,  // Changed to handle multiple types
+      q, 
+      page = 1, 
+      limit = 10 
+    } = req.query;
 
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
     if (book) filter.book = new RegExp(book, "i");
-    if (questionType) filter["questions.questionType"] = questionType;
 
     // Handle multiple chapters
     if (chapters) {
-      // Split chapters string into array if it's comma-separated
       const chapterArray = Array.isArray(chapters) ? chapters : chapters.split(',');
-      // Create regex pattern for each chapter
       filter.chapter = { 
         $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) 
       };
     }
 
+    // Handle multiple question types
+    if (questionTypes) {
+      const typeArray = Array.isArray(questionTypes) ? questionTypes : questionTypes.split(',');
+      filter["questions.questionType"] = { 
+        $in: typeArray.map(type => type.trim()) 
+      };
+    }
+
     console.log("🔍 Filter:", filter);
 
-    // Fetch quizzes sorted by createdAt descending
+    // Fetch quizzes
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
       .select("className subject chapter book title questions createdAt")
       .lean();
 
     console.log("📊 Found quizzes:", quizzes.length);
-    
-    // Debug: Log first quiz to check structure
-    if (quizzes.length > 0) {
-      console.log("🔍 Sample quiz structure:", JSON.stringify(quizzes[0], null, 2));
-    }
 
-    // Flatten into individual questions with question IDs
+    // Flatten into questions
     let results = quizzes.flatMap(quiz => {
       if (!quiz.questions || !Array.isArray(quiz.questions)) {
         console.warn("⚠️ Quiz has no questions array:", quiz._id);
@@ -300,13 +309,11 @@ app.get('/qustion', async (req, res) => {
       }
       
       return quiz.questions.map((ques, questionIndex) => {
-        console.log("🔍 Processing question:", {
-          question: ques.question?.substring(0, 50),
-          questionType: ques.questionType,
-          imageUrl: ques.imageUrl,
-          hasImageUrl: !!ques.imageUrl
-        });
-        
+        // Filter by question type if specified
+        if (questionTypes && !typeArray.includes(ques.questionType)) {
+          return null;
+        }
+
         return {
           questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
           quizId: quiz._id.toString(),
@@ -325,11 +332,8 @@ app.get('/qustion', async (req, res) => {
           quizUrl: `/quizItems/${quiz._id.toString()}`,
           specificQuestionUrl: `/quizItems/${quiz._id.toString()}/questions/${questionIndex}`
         };
-      });
+      }).filter(q => q !== null); // Remove filtered out questions
     });
-
-    console.log("📊 Total questions found:", results.length);
-    console.log("📊 Questions with images:", results.filter(r => r.imageUrl).length);
 
     // Extra text search
     if (q) {

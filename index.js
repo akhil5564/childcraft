@@ -255,7 +255,6 @@ app.delete('/users/:id', async (req, res) => {
 
 
 
-
 app.get('/qustion', async (req, res) => {
   try {
     const { 
@@ -263,7 +262,7 @@ app.get('/qustion', async (req, res) => {
       className, 
       chapters, 
       book, 
-      questionTypes,  // Changed to handle multiple types
+      questionTypes,
       q, 
       page = 1, 
       limit = 10 
@@ -283,12 +282,15 @@ app.get('/qustion', async (req, res) => {
       };
     }
 
-    // Handle multiple question types
-    if (questionTypes) {
-      const typeArray = Array.isArray(questionTypes) ? questionTypes : questionTypes.split(',');
-      filter["questions.questionType"] = { 
-        $in: typeArray.map(type => type.trim()) 
-      };
+    // Convert questionTypes to array outside the filter block
+    const questionTypeArray = questionTypes ? 
+      (Array.isArray(questionTypes) ? questionTypes : questionTypes.split(','))
+        .map(type => type.trim()) 
+      : null;
+
+    // Add question types to filter if present
+    if (questionTypeArray?.length) {
+      filter["questions.questionType"] = { $in: questionTypeArray };
     }
 
     console.log("🔍 Filter:", filter);
@@ -310,7 +312,7 @@ app.get('/qustion', async (req, res) => {
       
       return quiz.questions.map((ques, questionIndex) => {
         // Filter by question type if specified
-        if (questionTypes && !typeArray.includes(ques.questionType)) {
+        if (questionTypeArray && !questionTypeArray.includes(ques.questionType)) {
           return null;
         }
 
@@ -335,7 +337,7 @@ app.get('/qustion', async (req, res) => {
       }).filter(q => q !== null); // Remove filtered out questions
     });
 
-    // Extra text search
+    // ...rest of the code remains the same...
     if (q) {
       const regex = new RegExp(q, "i");
       results = results.filter(item =>
@@ -346,7 +348,6 @@ app.get('/qustion', async (req, res) => {
       );
     }
 
-    // Pagination
     const start = (page - 1) * limit;
     const end = start + parseInt(limit);
     const paginated = results.slice(start, end);

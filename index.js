@@ -852,6 +852,59 @@ app.delete('/chapter/:id', async (req, res) => {
 });
 
 
+
+
+
+// Delete book
+app.delete('/books/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deletedBook = await Book.findByIdAndDelete(id);
+    if (!deletedBook) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+    res.json({
+      message: 'Book deleted successfully',
+      deletedId: deletedBook._id
+    });
+  } catch (err) {
+    console.error('🔴 Server error (delete book):', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
+//update book
+
+app.put('/books/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, subject, class: bookClass } = req.body;
+  try {
+    const updatedBook = await Book.findByIdAndUpdate(
+      id,
+      { title, subject, class: bookClass },
+      { new: true, timestamps: true }  // note: timestamps in schema handle updatedAt
+    );
+    if (!updatedBook) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+    res.json({
+      id: updatedBook._id,
+      title: updatedBook.title,
+      subject: updatedBook.subject,
+      class: updatedBook.class,
+      updatedAt: updatedBook.updatedAt.toISOString(),
+      message: 'Book updated successfully'
+    });
+  } catch (err) {
+    console.error('🔴 Server error (update book):', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
 app.post('/books', async (req, res) => {
   console.log("📩 Incoming /books request body:", req.body);
 

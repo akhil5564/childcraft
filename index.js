@@ -873,8 +873,6 @@ app.delete('/books/:id', async (req, res) => {
   }
 });
 
-
-
 //update book
 
 app.put('/books/:id', async (req, res) => {
@@ -1957,6 +1955,73 @@ app.get('/schools', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error fetching schools:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// Get books with role-based filtering
+app.get('/books/filter', async (req, res) => {
+  try {
+    const { userId, subject, class: className } = req.query;
+    
+    // First find the user to check role
+    const user = await User.findById(userId).lean();
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Build filter based on role
+    let filter = {};
+
+    if (user.role === 'school') {
+      // For school users, filter by their assigned books
+      const schoolUser = await User.findById(userId)
+        .select('schoolDetails.books')
+        .populate('schoolDetails.books')
+        .lean();
+
+      if (!schoolUser?.schoolDetails?.books) {
+        return res.json({
+          total: 0,
+          results: []
+        });
+      }
+
+      filter._id = { $in: schoolUser.schoolDetails.books.map(book => book._id) };
+    }
+
+    // Add subject and class filters if provided
+    if (subject) {
+      filter.subject = new RegExp(subject, 'i');
+    }
+    if (className) {
+      filter.class = className;
+    }
+
+    // Get books with filter
+    const books = await Book.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      total: books.length,
+      results: books.map(book => ({
+        id: book._id,
+        name: book.book,
+        subject: book.subject,
+        class: book.class,
+        code: book.code,
+        createdAt: book.createdAt.toISOString(),
+        updatedAt: book.updatedAt.toISOString()
+      }))
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching filtered books:', err);
     res.status(500).json({ 
       message: 'Server error', 
       error: err.message 

@@ -292,29 +292,15 @@ app.get('/random-gen', async (req, res) => {
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    // Normalize question types to handle different cases
-    const normalizeQuestionType = (type) => {
-      const types = {
-        'fillblank': 'fillInTheBlank',
-        'fillintheblank': 'fillInTheBlank',
-        'fill_in_the_blank': 'fillInTheBlank',
-        'shortanswer': 'shortAnswer',
-        'short_answer': 'shortAnswer',
-        'longanswer': 'longAnswer',
-        'long_answer': 'longAnswer'
-      };
-      return types[type.toLowerCase()] || type.toLowerCase();
-    };
-
-    // Group questions by type with normalized types
+    // Group questions by type
     const questionsByType = quizzes.flatMap(quiz => 
       quiz.questions?.map((ques, questionIndex) => ({
-        ...ques,
         questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
         quizId: quiz._id.toString(),
         questionIndex,
-        questionType: normalizeQuestionType(ques.questionType),
-        marks: ques.marks || 0,
+        question: ques.question,
+        questionType: ques.questionType.toLowerCase(),
+        marks: ques.marks,
         imageUrl: ques.imageUrl || null,
         options: ques.options || [],
         subject: quiz.subject,
@@ -326,25 +312,17 @@ app.get('/random-gen', async (req, res) => {
       }))
     ).reduce((acc, q) => {
       if (!q) return acc;
-      const type = normalizeQuestionType(q.questionType);
+      const type = q.questionType;
       if (!acc[type]) acc[type] = [];
       acc[type].push(q);
       return acc;
     }, {});
 
-    console.log("📊 Available questions by type:", 
-      Object.entries(questionsByType)
-        .map(([type, questions]) => `${type}: ${questions.length}`)
-    );
-
-    // Select random questions with normalized types
+    // Select random questions for each type
     const selectedQuestions = Object.entries(typeCounts).flatMap(([type, count]) => {
       if (count <= 0) return [];
       
-      const normalizedType = normalizeQuestionType(type);
-      const available = questionsByType[normalizedType] || [];
-      console.log(`🎲 Selecting ${count} questions of type ${normalizedType} from ${available.length} available`);
-      
+      const available = questionsByType[type] || [];
       const shuffled = available.sort(() => Math.random() - 0.5);
       return shuffled.slice(0, count);
     });
@@ -391,30 +369,53 @@ app.get('/random-gen', async (req, res) => {
 });
 app.get('/qustion', async (req, res) => {
   try {
-    const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;
+    const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10 } = req.query;
 
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
-    if (chapter) filter.chapter = new RegExp(chapter, "i");
     if (book) filter.book = new RegExp(book, "i");
-    if (questionType) filter["questions.questionType"] = questionType;
 
-    console.log("🔍 Filter:", filter);
+    // Handle multiple chapters
+    if (chapters) {
+      const chapterArray = Array.isArray(chapters) ? chapters : chapters.split(',');
+      filter.chapter = { 
+        $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) 
+      };
+    }
 
-    // Fetch quizzes sorted by createdAt descending
+    // Normalize question types to handle different cases
+    const normalizeQuestionType = (type) => {
+      const types = {
+        'shortanswer': 'shortAnswer',
+        'short_answer': 'shortAnswer',
+        'longanswer': 'longAnswer',
+        'long_answer': 'longAnswer',
+        'fillintheblank': 'fillInTheBlank',
+        'fillblank': 'fillInTheBlank'
+      };
+      return types[type.toLowerCase()] || type.toLowerCase();
+    };
+
+    // Handle multiple question types with normalization
+    if (questionTypes) {
+      const typeArray = questionTypes.split(',').map(t => t.trim());
+      const normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
+      filter["questions.questionType"] = { 
+        $in: normalizedTypes.map(t => new RegExp(`^${t}$`, 'i')) 
+      };
+    }
+
+    console.log("🔍 Applied filters:", filter);
+
+    // Fetch quizzes
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    console.log("📊 Found quizzes:", quizzes.length);
-    
-    // Debug: Log first quiz to check structure
-    if (quizzes.length > 0) {
-      console.log("🔍 Sample quiz structure:", JSON.stringify(quizzes[0], null, 2));
-    }
+    console.log("📚 Found quizzes:", quizzes.length);
 
     // Flatten into individual questions with question IDs
     let results = quizzes.flatMap(quiz => {

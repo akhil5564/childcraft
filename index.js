@@ -402,10 +402,13 @@ app.get('/qustion', async (req, res) => {
       return types[type.toLowerCase()] || type.toLowerCase();
     };
 
+    // Define normalizedTypes here so it's available in the entire scope
+    let normalizedTypes = [];
+
     // Handle multiple question types with normalization
     if (questionTypes) {
       const typeArray = questionTypes.split(',').map(t => t.trim());
-      const normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
+      normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
       console.log('Normalized question types:', normalizedTypes);
       filter["questions.questionType"] = { 
         $in: normalizedTypes

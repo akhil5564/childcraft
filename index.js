@@ -1021,31 +1021,64 @@ app.delete('/books/:id', async (req, res) => {
 //update book
 
 app.put('/books/:id', async (req, res) => {
-  const { id } = req.params;
-  const { title, subject, class: bookClass } = req.body;
   try {
+    const { id } = req.params;
+    const { book, subject, class: bookClass, code } = req.body;
+
+    // Validate required fields
+    if (!book || !subject || !bookClass || !code) {
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        required: ['book', 'subject', 'class', 'code']
+      });
+    }
+
+    // Update book with new structure
     const updatedBook = await Book.findByIdAndUpdate(
       id,
-      { title, subject, class: bookClass },
-      { new: true, timestamps: true }  // note: timestamps in schema handle updatedAt
+      { 
+        book,
+        subject,
+        class: bookClass,
+        code 
+      },
+      { 
+        new: true,
+        runValidators: true
+      }
     );
+
     if (!updatedBook) {
       return res.status(404).json({ message: 'Book not found' });
     }
+
     res.json({
       id: updatedBook._id,
-      title: updatedBook.title,
+      book: updatedBook.book,
       subject: updatedBook.subject,
       class: updatedBook.class,
+      code: updatedBook.code,
+      createdAt: updatedBook.createdAt.toISOString(),
       updatedAt: updatedBook.updatedAt.toISOString(),
       message: 'Book updated successfully'
     });
+
   } catch (err) {
-    console.error('🔴 Server error (update book):', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Error updating book:', err);
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: Object.values(err.errors).map(e => e.message)
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Server error',
+      error: err.message 
+    });
   }
 });
-
 
 
 app.post('/books', async (req, res) => {

@@ -258,108 +258,96 @@ app.get('/random-gen', async (req, res) => {
       subject,
       className,
       book,
-      Chapters, // Note: Parameter starts with capital C
-      questionTypes,
-      marks,
-      count = 1
+      Chapters,
+      counts = {}, // Will handle as query params like mcqCount=2&imageCount=1
+      marks
     } = req.query;
 
-    // Build dynamic filter
-    let filter = {};
+    // Parse question type counts from query
+    const typeCounts = {
+      mcq: parseInt(req.query.mcqCount) || 0,
+      image: parseInt(req.query.imageCount) || 0,
+      shortAnswer: parseInt(req.query.shortAnswerCount) || 0,
+      longAnswer: parseInt(req.query.longAnswerCount) || 0
+    };
 
-    // Add basic filters with proper case handling
+    // Build base filter
+    let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
     if (book) filter.book = new RegExp(book.trim(), "i");
-
-    // Handle Chapters (capital C) parameter
     if (Chapters) {
       const chapterArray = Array.isArray(Chapters) ? Chapters : Chapters.split(',');
-      filter.chapter = { 
-        $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) 
-      };
+      filter.chapter = { $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) };
     }
+    if (marks) filter["questions.marks"] = Number(marks);
 
-    // Handle question types
-    const questionTypeArray = questionTypes ? 
-      (Array.isArray(questionTypes) ? questionTypes : questionTypes.split(','))
-        .map(type => type.trim().toLowerCase()) 
-      : null;
+    console.log("🔍 Base filters:", JSON.stringify(filter, null, 2));
 
-    if (questionTypeArray?.length) {
-      filter["questions.questionType"] = { $in: questionTypeArray };
-    }
-
-    // Handle marks filter
-    if (marks) {
-      filter["questions.marks"] = Number(marks);
-    }
-
-    console.log("🔍 Applied filters:", JSON.stringify(filter, null, 2));
-
-    // Fetch matching quizzes
+    // Fetch all matching quizzes
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    console.log(`📚 Found ${quizzes.length} matching quizzes`);
+    // Group questions by type
+    const questionsByType = quizzes.flatMap(quiz => 
+      quiz.questions?.map((ques, questionIndex) => ({
+        questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+        quizId: quiz._id.toString(),
+        questionIndex: questionIndex,
+        question: ques.question,
+        questionType: ques.questionType,
+        marks: ques.marks,
+        imageUrl: ques.imageUrl || null,
+        options: ques.options || [],
+        subject: quiz.subject,
+        className: quiz.className,
+        chapter: quiz.chapter,
+        book: quiz.book,
+        quizTitle: quiz.title,
+        createdAt: quiz.createdAt
+      }))
+    ).reduce((acc, q) => {
+      if (!q) return acc;
+      const type = q.questionType.toLowerCase();
+      if (!acc[type]) acc[type] = [];
+      acc[type].push(q);
+      return acc;
+    }, {});
 
-    // Extract matching questions
-    let allQuestions = quizzes.flatMap(quiz => 
-      quiz.questions?.map((ques, questionIndex) => {
-        if ((questionTypeArray && !questionTypeArray.includes(ques.questionType.toLowerCase())) ||
-            (marks && ques.marks !== Number(marks))) {
-          return null;
-        }
-
-        return {
-          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
-          quizId: quiz._id.toString(),
-          questionIndex: questionIndex,
-          question: ques.question,
-          questionType: ques.questionType,
-          marks: ques.marks,
-          imageUrl: ques.imageUrl || null,
-          options: ques.options || [],
-          subject: quiz.subject,
-          className: quiz.className,
-          chapter: quiz.chapter,
-          book: quiz.book,
-          quizTitle: quiz.title,
-          createdAt: quiz.createdAt
-        };
-      }).filter(q => q !== null) || []
-    );
-
-    console.log(`📝 Found ${allQuestions.length} matching questions`);
-
-    // Randomly select questions
-    allQuestions = allQuestions.sort(() => Math.random() - 0.5);
-    const requestedCount = Math.min(Number(count) || 1, allQuestions.length);
-    const selectedQuestions = allQuestions.slice(0, requestedCount);
+    // Select random questions for each type
+    const selectedQuestions = Object.entries(typeCounts).flatMap(([type, count]) => {
+      if (count <= 0) return [];
+      
+      const available = questionsByType[type] || [];
+      const shuffled = available.sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, count);
+    });
 
     // Calculate statistics
     const stats = selectedQuestions.reduce((acc, q) => {
-      acc.typeCount[q.questionType] = (acc.typeCount[q.questionType] || 0) + 1;
-      acc.typeMarks[q.questionType] = (acc.typeMarks[q.questionType] || 0) + q.marks;
+      const type = q.questionType.toLowerCase();
+      acc.typeCount[type] = (acc.typeCount[type] || 0) + 1;
+      acc.typeMarks[type] = (acc.typeMarks[type] || 0) + q.marks;
       acc.totalMarks += q.marks;
       return acc;
-    }, { 
-      typeCount: {}, 
-      typeMarks: {},
-      totalMarks: 0 
-    });
+    }, { typeCount: {}, typeMarks: {}, totalMarks: 0 });
 
     res.json({
-      totalAvailable: allQuestions.length,
-      selected: requestedCount,
+      available: Object.fromEntries(
+        Object.entries(questionsByType).map(([type, questions]) => [type, questions.length])
+      ),
+      selected: {
+        total: selectedQuestions.length,
+        byType: stats.typeCount
+      },
       filters: {
         subject,
         className,
         book,
         chapters: Chapters ? Chapters.split(',') : [],
-        questionTypes: questionTypeArray,
+        requestedCounts: typeCounts,
         marks
       },
       statistics: {

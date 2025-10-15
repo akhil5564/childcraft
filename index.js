@@ -252,67 +252,64 @@ app.delete('/users/:id', async (req, res) => {
 //   }
 // });
 
-
-
-
-app.get('/qustion', async (req, res) => {
+app.get('/random-gen', async (req, res) => {
   try {
     const { 
-      subject, 
-      className, 
-      chapters, 
-      book, 
+      subject,
+      className,
+      book,
+      Chapters, // Note: Parameter starts with capital C
       questionTypes,
-      q, 
-      page = 1, 
-      limit = 10 
+      marks,
+      count = 1
     } = req.query;
 
     // Build dynamic filter
     let filter = {};
+
+    // Add basic filters with proper case handling
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
-    if (book) filter.book = new RegExp(book, "i");
+    if (book) filter.book = new RegExp(book.trim(), "i");
 
-    // Handle multiple chapters
-    if (chapters) {
-      const chapterArray = Array.isArray(chapters) ? chapters : chapters.split(',');
+    // Handle Chapters (capital C) parameter
+    if (Chapters) {
+      const chapterArray = Array.isArray(Chapters) ? Chapters : Chapters.split(',');
       filter.chapter = { 
         $in: chapterArray.map(ch => new RegExp(ch.trim(), "i")) 
       };
     }
 
-    // Convert questionTypes to array outside the filter block
+    // Handle question types
     const questionTypeArray = questionTypes ? 
       (Array.isArray(questionTypes) ? questionTypes : questionTypes.split(','))
-        .map(type => type.trim()) 
+        .map(type => type.trim().toLowerCase()) 
       : null;
 
-    // Add question types to filter if present
     if (questionTypeArray?.length) {
       filter["questions.questionType"] = { $in: questionTypeArray };
     }
 
-    console.log("🔍 Filter:", filter);
+    // Handle marks filter
+    if (marks) {
+      filter["questions.marks"] = Number(marks);
+    }
 
-    // Fetch quizzes
+    console.log("🔍 Applied filters:", JSON.stringify(filter, null, 2));
+
+    // Fetch matching quizzes
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    console.log("📊 Found quizzes:", quizzes.length);
+    console.log(`📚 Found ${quizzes.length} matching quizzes`);
 
-    // Flatten into questions
-    let results = quizzes.flatMap(quiz => {
-      if (!quiz.questions || !Array.isArray(quiz.questions)) {
-        console.warn("⚠️ Quiz has no questions array:", quiz._id);
-        return [];
-      }
-      
-      return quiz.questions.map((ques, questionIndex) => {
-        // Filter by question type if specified
-        if (questionTypeArray && !questionTypeArray.includes(ques.questionType)) {
+    // Extract matching questions
+    let allQuestions = quizzes.flatMap(quiz => 
+      quiz.questions?.map((ques, questionIndex) => {
+        if ((questionTypeArray && !questionTypeArray.includes(ques.questionType.toLowerCase())) ||
+            (marks && ques.marks !== Number(marks))) {
           return null;
         }
 
@@ -320,6 +317,114 @@ app.get('/qustion', async (req, res) => {
           questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
           quizId: quiz._id.toString(),
           questionIndex: questionIndex,
+          question: ques.question,
+          questionType: ques.questionType,
+          marks: ques.marks,
+          imageUrl: ques.imageUrl || null,
+          options: ques.options || [],
+          subject: quiz.subject,
+          className: quiz.className,
+          chapter: quiz.chapter,
+          book: quiz.book,
+          quizTitle: quiz.title,
+          createdAt: quiz.createdAt
+        };
+      }).filter(q => q !== null) || []
+    );
+
+    console.log(`📝 Found ${allQuestions.length} matching questions`);
+
+    // Randomly select questions
+    allQuestions = allQuestions.sort(() => Math.random() - 0.5);
+    const requestedCount = Math.min(Number(count) || 1, allQuestions.length);
+    const selectedQuestions = allQuestions.slice(0, requestedCount);
+
+    // Calculate statistics
+    const stats = selectedQuestions.reduce((acc, q) => {
+      acc.typeCount[q.questionType] = (acc.typeCount[q.questionType] || 0) + 1;
+      acc.typeMarks[q.questionType] = (acc.typeMarks[q.questionType] || 0) + q.marks;
+      acc.totalMarks += q.marks;
+      return acc;
+    }, { 
+      typeCount: {}, 
+      typeMarks: {},
+      totalMarks: 0 
+    });
+
+    res.json({
+      totalAvailable: allQuestions.length,
+      selected: requestedCount,
+      filters: {
+        subject,
+        className,
+        book,
+        chapters: Chapters ? Chapters.split(',') : [],
+        questionTypes: questionTypeArray,
+        marks
+      },
+      statistics: {
+        questionTypes: Object.entries(stats.typeCount).map(([type, count]) => ({
+          type,
+          count,
+          totalMarks: stats.typeMarks[type]
+        })),
+        totalMarks: stats.totalMarks
+      },
+      questions: selectedQuestions
+    });
+
+  } catch (err) {
+    console.error("❌ Error generating random questions:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+app.get('/qustion', async (req, res) => {
+  try {
+    const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;
+
+    // Build dynamic filter
+    let filter = {};
+    if (subject) filter.subject = new RegExp(subject, "i");
+    if (className) filter.className = String(className);
+    if (chapter) filter.chapter = new RegExp(chapter, "i");
+    if (book) filter.book = new RegExp(book, "i");
+    if (questionType) filter["questions.questionType"] = questionType;
+
+    console.log("🔍 Filter:", filter);
+
+    // Fetch quizzes sorted by createdAt descending
+    const quizzes = await QuizItem.find(filter)
+      .sort({ createdAt: -1 })
+      .select("className subject chapter book title questions createdAt")
+      .lean();
+
+    console.log("📊 Found quizzes:", quizzes.length);
+    
+    // Debug: Log first quiz to check structure
+    if (quizzes.length > 0) {
+      console.log("🔍 Sample quiz structure:", JSON.stringify(quizzes[0], null, 2));
+    }
+
+    // Flatten into individual questions with question IDs
+    let results = quizzes.flatMap(quiz => {
+      if (!quiz.questions || !Array.isArray(quiz.questions)) {
+        console.warn("⚠️ Quiz has no questions array:", quiz._id);
+        return [];
+      }
+      
+      return quiz.questions.map((ques, questionIndex) => {
+        console.log("🔍 Processing question:", {
+          question: ques.question?.substring(0, 50),
+          questionType: ques.questionType,
+          imageUrl: ques.imageUrl,
+          hasImageUrl: !!ques.imageUrl
+        });
+        
+        return {
+          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`, // Question ID
+          quizId: quiz._id.toString(), // Quiz ID
+          questionIndex: questionIndex, // Question position in quiz
           question: ques.question,
           questionType: ques.questionType,
           imageUrl: ques.imageUrl || null,
@@ -331,13 +436,17 @@ app.get('/qustion', async (req, res) => {
           book: quiz.book,
           quizTitle: quiz.title,
           createdAt: quiz.createdAt,
+          // Navigation URLs
           quizUrl: `/quizItems/${quiz._id.toString()}`,
           specificQuestionUrl: `/quizItems/${quiz._id.toString()}/questions/${questionIndex}`
         };
-      }).filter(q => q !== null); // Remove filtered out questions
+      });
     });
 
-    // ...rest of the code remains the same...
+    console.log("📊 Total questions found:", results.length);
+    console.log("📊 Questions with images:", results.filter(r => r.imageUrl).length);
+
+    // Extra text search
     if (q) {
       const regex = new RegExp(q, "i");
       results = results.filter(item =>
@@ -348,6 +457,7 @@ app.get('/qustion', async (req, res) => {
       );
     }
 
+    // Pagination
     const start = (page - 1) * limit;
     const end = start + parseInt(limit);
     const paginated = results.slice(start, end);
@@ -365,6 +475,7 @@ app.get('/qustion', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
 
 
 // GET /books?class=3&subject=English

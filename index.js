@@ -388,12 +388,16 @@ app.get('/qustion', async (req, res) => {
     // Normalize question types to handle different cases
     const normalizeQuestionType = (type) => {
       const types = {
+        'fillblank': 'fillblank',
+        'fillintheblank': 'fillblank',
+        'fill_in_the_blank': 'fillblank',
         'shortanswer': 'shortAnswer',
         'short_answer': 'shortAnswer',
         'longanswer': 'longAnswer',
         'long_answer': 'longAnswer',
-        'fillintheblank': 'fillInTheBlank',
-        'fillblank': 'fillInTheBlank'
+        'essay': 'essay',
+        'mcq': 'mcq',
+        'image': 'image'
       };
       return types[type.toLowerCase()] || type.toLowerCase();
     };
@@ -402,8 +406,9 @@ app.get('/qustion', async (req, res) => {
     if (questionTypes) {
       const typeArray = questionTypes.split(',').map(t => t.trim());
       const normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
+      console.log('Normalized question types:', normalizedTypes);
       filter["questions.questionType"] = { 
-        $in: normalizedTypes.map(t => new RegExp(`^${t}$`, 'i')) 
+        $in: normalizedTypes
       };
     }
 
@@ -417,27 +422,27 @@ app.get('/qustion', async (req, res) => {
 
     console.log("📚 Found quizzes:", quizzes.length);
 
-    // Flatten into individual questions with question IDs
+    // Flatten into individual questions
     let results = quizzes.flatMap(quiz => {
       if (!quiz.questions || !Array.isArray(quiz.questions)) {
-        console.warn("⚠️ Quiz has no questions array:", quiz._id);
         return [];
       }
       
       return quiz.questions.map((ques, questionIndex) => {
-        console.log("🔍 Processing question:", {
-          question: ques.question?.substring(0, 50),
-          questionType: ques.questionType,
-          imageUrl: ques.imageUrl,
-          hasImageUrl: !!ques.imageUrl
-        });
+        // Normalize the question type before comparison
+        const normalizedType = normalizeQuestionType(ques.questionType);
         
+        // Only include questions if they match the requested types
+        if (questionTypes && !normalizedTypes.includes(normalizedType)) {
+          return null;
+        }
+
         return {
-          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`, // Question ID
-          quizId: quiz._id.toString(), // Quiz ID
-          questionIndex: questionIndex, // Question position in quiz
+          questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+          quizId: quiz._id.toString(),
+          questionIndex: questionIndex,
           question: ques.question,
-          questionType: ques.questionType,
+          questionType: normalizedType,
           imageUrl: ques.imageUrl || null,
           marks: ques.marks || null,
           options: ques.options || [],
@@ -446,16 +451,10 @@ app.get('/qustion', async (req, res) => {
           chapter: quiz.chapter,
           book: quiz.book,
           quizTitle: quiz.title,
-          createdAt: quiz.createdAt,
-          // Navigation URLs
-          quizUrl: `/quizItems/${quiz._id.toString()}`,
-          specificQuestionUrl: `/quizItems/${quiz._id.toString()}/questions/${questionIndex}`
+          createdAt: quiz.createdAt
         };
-      });
+      }).filter(q => q !== null);
     });
-
-    console.log("📊 Total questions found:", results.length);
-    console.log("📊 Questions with images:", results.filter(r => r.imageUrl).length);
 
     // Extra text search
     if (q) {
@@ -468,6 +467,12 @@ app.get('/qustion', async (req, res) => {
       );
     }
 
+    // Group questions by type for statistics
+    const typeStats = results.reduce((acc, q) => {
+      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
     // Pagination
     const start = (page - 1) * limit;
     const end = start + parseInt(limit);
@@ -478,6 +483,7 @@ app.get('/qustion', async (req, res) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(results.length / limit),
+      questionTypes: typeStats,
       data: paginated
     });
 

@@ -391,10 +391,11 @@ app.get('/qustion', async (req, res) => {
         'fillblank': 'fillblank',
         'fillintheblank': 'fillblank',
         'fill_in_the_blank': 'fillblank',
-        'shortanswer': 'shortAnswer',
-        'short_answer': 'shortAnswer',
-        'longanswer': 'longAnswer',
-        'long_answer': 'longAnswer',
+        'shortanswer': 'shortanswer',  // Changed to match database
+        'short_answer': 'shortanswer',  // Changed to match database
+        'short answer': 'shortanswer',  // Added space variant
+        'longanswer': 'longanswer',
+        'long_answer': 'longanswer',
         'essay': 'essay',
         'mcq': 'mcq',
         'image': 'image'
@@ -402,20 +403,21 @@ app.get('/qustion', async (req, res) => {
       return types[type.toLowerCase()] || type.toLowerCase();
     };
 
-    // Define normalizedTypes here so it's available in the entire scope
     let normalizedTypes = [];
 
     // Handle multiple question types with normalization
     if (questionTypes) {
       const typeArray = questionTypes.split(',').map(t => t.trim());
       normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
-      console.log('Normalized question types:', normalizedTypes);
+      console.log('🔍 Original question types:', typeArray);
+      console.log('✨ Normalized question types:', normalizedTypes);
+      
       filter["questions.questionType"] = { 
-        $in: normalizedTypes
+        $in: normalizedTypes.map(type => new RegExp(type, 'i'))
       };
     }
 
-    console.log("🔍 Applied filters:", filter);
+    console.log("🔍 Applied filters:", JSON.stringify(filter, null, 2));
 
     // Fetch quizzes
     const quizzes = await QuizItem.find(filter)

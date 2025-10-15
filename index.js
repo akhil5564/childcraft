@@ -77,6 +77,14 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // Check if user is active
+    if (!user.status) {
+      return res.status(403).json({ 
+        message: 'Account is inactive. Please contact administrator.',
+        status: false
+      });
+    }
+
     // Check if passwords match
     if (user.originalPassword !== password) {
       return res.status(401).json({ message: 'Invalid credentials' });

@@ -259,16 +259,17 @@ app.get('/random-gen', async (req, res) => {
       className,
       book,
       Chapters,
-      counts = {}, // Will handle as query params like mcqCount=2&imageCount=1
       marks
     } = req.query;
 
-    // Parse question type counts from query
+    // Parse all question type counts
     const typeCounts = {
       mcq: parseInt(req.query.mcqCount) || 0,
       image: parseInt(req.query.imageCount) || 0,
       shortAnswer: parseInt(req.query.shortAnswerCount) || 0,
-      longAnswer: parseInt(req.query.longAnswerCount) || 0
+      longAnswer: parseInt(req.query.longAnswerCount) || 0,
+      essay: parseInt(req.query.essayCount) || 0,
+      fillInTheBlank: parseInt(req.query.fillInTheBlankCount) || 0
     };
 
     // Build base filter
@@ -282,23 +283,38 @@ app.get('/random-gen', async (req, res) => {
     }
     if (marks) filter["questions.marks"] = Number(marks);
 
-    console.log("🔍 Base filters:", JSON.stringify(filter, null, 2));
+    console.log("🔍 Filters:", JSON.stringify(filter, null, 2));
+    console.log("📊 Requested counts:", typeCounts);
 
-    // Fetch all matching quizzes
+    // Fetch matching quizzes
     const quizzes = await QuizItem.find(filter)
       .sort({ createdAt: -1 })
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    // Group questions by type
+    // Normalize question types to handle different cases
+    const normalizeQuestionType = (type) => {
+      const types = {
+        'fillblank': 'fillInTheBlank',
+        'fillintheblank': 'fillInTheBlank',
+        'fill_in_the_blank': 'fillInTheBlank',
+        'shortanswer': 'shortAnswer',
+        'short_answer': 'shortAnswer',
+        'longanswer': 'longAnswer',
+        'long_answer': 'longAnswer'
+      };
+      return types[type.toLowerCase()] || type.toLowerCase();
+    };
+
+    // Group questions by type with normalized types
     const questionsByType = quizzes.flatMap(quiz => 
       quiz.questions?.map((ques, questionIndex) => ({
+        ...ques,
         questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
         quizId: quiz._id.toString(),
-        questionIndex: questionIndex,
-        question: ques.question,
-        questionType: ques.questionType,
-        marks: ques.marks,
+        questionIndex,
+        questionType: normalizeQuestionType(ques.questionType),
+        marks: ques.marks || 0,
         imageUrl: ques.imageUrl || null,
         options: ques.options || [],
         subject: quiz.subject,
@@ -310,26 +326,33 @@ app.get('/random-gen', async (req, res) => {
       }))
     ).reduce((acc, q) => {
       if (!q) return acc;
-      const type = q.questionType.toLowerCase();
+      const type = normalizeQuestionType(q.questionType);
       if (!acc[type]) acc[type] = [];
       acc[type].push(q);
       return acc;
     }, {});
 
-    // Select random questions for each type
+    console.log("📊 Available questions by type:", 
+      Object.entries(questionsByType)
+        .map(([type, questions]) => `${type}: ${questions.length}`)
+    );
+
+    // Select random questions with normalized types
     const selectedQuestions = Object.entries(typeCounts).flatMap(([type, count]) => {
       if (count <= 0) return [];
       
-      const available = questionsByType[type] || [];
+      const normalizedType = normalizeQuestionType(type);
+      const available = questionsByType[normalizedType] || [];
+      console.log(`🎲 Selecting ${count} questions of type ${normalizedType} from ${available.length} available`);
+      
       const shuffled = available.sort(() => Math.random() - 0.5);
       return shuffled.slice(0, count);
     });
 
     // Calculate statistics
     const stats = selectedQuestions.reduce((acc, q) => {
-      const type = q.questionType.toLowerCase();
-      acc.typeCount[type] = (acc.typeCount[type] || 0) + 1;
-      acc.typeMarks[type] = (acc.typeMarks[type] || 0) + q.marks;
+      acc.typeCount[q.questionType] = (acc.typeCount[q.questionType] || 0) + 1;
+      acc.typeMarks[q.questionType] = (acc.typeMarks[q.questionType] || 0) + q.marks;
       acc.totalMarks += q.marks;
       return acc;
     }, { typeCount: {}, typeMarks: {}, totalMarks: 0 });
@@ -362,11 +385,10 @@ app.get('/random-gen', async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error generating random questions:", err);
+    console.error("❌ Error:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 app.get('/qustion', async (req, res) => {
   try {
     const { subject, className, chapter, book, questionType, q, page = 1, limit = 10 } = req.query;

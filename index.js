@@ -259,7 +259,25 @@ app.delete('/users/:id', async (req, res) => {
 //     res.status(500).json({ message: 'Server error' });
 //   }
 // });
+app.get('/examinations', async (req, res) => {
+  try {
+    const { schoolId } = req.query;
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId is required as a query parameter' });
+    }
 
+    const exams = await Examination.find({ school: schoolId })
+      .sort({ createdAt: -1 });
+
+    res.json({
+      total: exams.length,
+      examinations: exams
+    });
+  } catch (err) {
+    console.error('❌ Error fetching examinations:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
 app.get('/random-gen', async (req, res) => {
   try {
     const { 
@@ -274,10 +292,10 @@ app.get('/random-gen', async (req, res) => {
     const typeCounts = {
       mcq: parseInt(req.query.mcqCount) || 0,
       image: parseInt(req.query.imageCount) || 0,
-      shortAnswer: parseInt(req.query.shortAnswerCount) || 0,
+      shortanswer: parseInt(req.query.shortAnswerCount) || 0,
       longAnswer: parseInt(req.query.longAnswerCount) || 0,
       essay: parseInt(req.query.essayCount) || 0,
-      fillInTheBlank: parseInt(req.query.fillInTheBlankCount) || 0
+      fillBlank: parseInt(req.query.fillInTheBlankCount) || 0
     };
 
     // Build base filter

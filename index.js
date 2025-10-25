@@ -295,7 +295,7 @@ app.get('/random-gen', async (req, res) => {
       shortanswer: parseInt(req.query.shortAnswerCount) || 0,
       longAnswer: parseInt(req.query.longAnswerCount) || 0,
       essay: parseInt(req.query.essayCount) || 0,
-      fillBlank: parseInt(req.query.fillInTheBlankCount) || 0
+      fillblank: parseInt(req.query.fillInTheBlankCount) || 0
     };
 
     // Build base filter

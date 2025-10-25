@@ -9,7 +9,7 @@ const Chapter = require('./model/Chapter');  // ✅ correct path
 const multer = require('multer');
 const cloudinary = require('./cloudinary');
 
-
+const Examination = require('./model/Examination');
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
 const Subject = require('./model/Subject');
@@ -2255,24 +2255,25 @@ app.post('/examinations', async (req, res) => {
       }
     }
 
-    // Save to DB (example: Examination model, you must create this schema/model)
-    // const newExam = new Examination({
-    //   school: schoolId,
-    //   subject,
-    //   class: className,
-    //   book,
-    //   chapters,
-    //   examinationType,
-    //   totalMark,
-    //   duration,
-    //   schoolName,
-    //   questions
-    // });
-    // await newExam.save();
+    // Save to DB
+    const newExam = new Examination({
+      school: schoolId,
+      subject,
+      class: className,
+      book,
+      chapters,
+      examinationType,
+      totalMark,
+      duration,
+      schoolName,
+      questions
+    });
+    await newExam.save();
 
-    // For now, just return the received data as a confirmation
     res.status(201).json({
       message: 'Examination created successfully',
+      id: newExam._id,
+      createdAt: newExam.createdAt,
       data: {
         schoolId,
         subject,

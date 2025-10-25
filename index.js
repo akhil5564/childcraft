@@ -399,8 +399,8 @@ app.get('/qustion', async (req, res) => {
         'fillblank': 'fillblank',
         'fillintheblank': 'fillblank',
         'fill_in_the_blank': 'fillblank',
-        'shortanswer': 'shortanswer',  // Changed to match database
-        'short_answer': 'shortanswer',  // Changed to match database
+        'shortanswer': 'shortanswer',  
+        'short_answer': 'shortanswer',
         'short answer': 'shortanswer',  // Added space variant
         'longanswer': 'longanswer',
         'long_answer': 'longanswer',
@@ -1472,10 +1472,9 @@ app.post('/quizItems', async (req, res) => {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
-      if (!q.questionType || !q.question || !q.marks) {
+      if (!q.question || !q.questionType || !q.mark) {
         return res.status(400).json({
-          message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
-          question: q
+          message: `Question ${i + 1}: Missing question, questionType, or mark`
         });
       }
 
@@ -2212,6 +2211,85 @@ app.get('/books/filter', async (req, res) => {
       message: 'Server error', 
       error: err.message 
     });
+  }
+});
+
+// Create Examination
+app.post('/examinations', async (req, res) => {
+  try {
+    const {
+      schoolId,
+      subject,
+      class: className,
+      book,
+      chapters,
+      examinationType,
+      totalMark,
+      duration,
+      schoolName,
+      questions
+    } = req.body;
+
+    // Validate required fields
+    if (
+      !schoolId || !subject || !className || !book ||
+      !chapters || !examinationType || !totalMark ||
+      !duration || !schoolName || !Array.isArray(questions) || questions.length === 0
+    ) {
+      return res.status(400).json({
+        message: 'Missing required fields',
+        required: [
+          'schoolId', 'subject', 'class', 'book', 'chapters',
+          'examinationType', 'totalMark', 'duration', 'schoolName', 'questions'
+        ]
+      });
+    }
+
+    // Validate each question
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.question || !q.questionType || !q.mark) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: Missing question, questionType, or mark`
+        });
+      }
+    }
+
+    // Save to DB (example: Examination model, you must create this schema/model)
+    // const newExam = new Examination({
+    //   school: schoolId,
+    //   subject,
+    //   class: className,
+    //   book,
+    //   chapters,
+    //   examinationType,
+    //   totalMark,
+    //   duration,
+    //   schoolName,
+    //   questions
+    // });
+    // await newExam.save();
+
+    // For now, just return the received data as a confirmation
+    res.status(201).json({
+      message: 'Examination created successfully',
+      data: {
+        schoolId,
+        subject,
+        class: className,
+        book,
+        chapters,
+        examinationType,
+        totalMark,
+        duration,
+        schoolName,
+        questions
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Error creating examination:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

@@ -399,7 +399,8 @@ app.get('/qustion', async (req, res) => {
         'fillblank': 'fillblank',
         'fillintheblank': 'fillblank',
         'fill_in_the_blank': 'fillblank',
-        'shortanswer': 'shortanswer',  
+        'shortanswer': 'shortanswer',  // Changed to match database
+        'short_answer': 'shortanswer',  // Changed to match database
         'short_answer': 'shortanswer',
         'short answer': 'shortanswer',  // Added space variant
         'longanswer': 'longanswer',
@@ -1472,10 +1473,11 @@ app.post('/quizItems', async (req, res) => {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
-      if (!q.question || !q.questionType || !q.mark) {
+      if (!q.questionType || !q.question || !q.marks) {
+
         return res.status(400).json({
-          message: `Question ${i + 1}: Missing question, questionType, or mark`
-        });
+     message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
+          question: q        });
       }
 
       // Check if MCQ has options

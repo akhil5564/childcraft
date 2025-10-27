@@ -2313,4 +2313,23 @@ app.post('/examinations', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
+app.get('/examinations', async (req, res) => {
+  try {
+    const { schoolId } = req.query;
+    if (!schoolId) {
+      return res.status(400).json({ message: 'schoolId is required as a query parameter' });
+    }
 
+    // Find all exams for the school, including questions array
+    const exams = await Examination.find({ school: schoolId })
+      .sort({ createdAt: -1 });
+
+    res.json({
+      total: exams.length,
+      examinations: exams // Each exam will include the full questions array
+    });
+  } catch (err) {
+    console.error('❌ Error fetching examinations:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});

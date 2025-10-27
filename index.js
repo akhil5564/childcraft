@@ -2315,18 +2315,44 @@ app.post('/examinations', async (req, res) => {
 });
 app.get('/examinations', async (req, res) => {
   try {
-    const { schoolId } = req.query;
+    const { 
+      schoolId, 
+      class: className, 
+      subject, 
+      book, 
+      page = 1, 
+      pageSize = 10 
+    } = req.query;
+
     if (!schoolId) {
       return res.status(400).json({ message: 'schoolId is required as a query parameter' });
     }
 
-    // Find all exams for the school, including questions array
-    const exams = await Examination.find({ school: schoolId })
-      .sort({ createdAt: -1 });
+    // Build filter
+    let filter = { school: schoolId };
+    if (className) filter.class = className;
+    if (subject) filter.subject = new RegExp(subject, 'i');
+    if (book) filter.book = new RegExp(book, 'i');
+
+    // Pagination
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    // Get total count for pagination
+    const total = await Examination.countDocuments(filter);
+
+    // Fetch exams with pagination and filters
+    const exams = await Examination.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({
-      total: exams.length,
-      examinations: exams // Each exam will include the full questions array
+      total,
+      page: Number(page),
+      pageSize: Number(pageSize),
+      totalPages: Math.ceil(total / pageSize),
+      examinations: exams
     });
   } catch (err) {
     console.error('❌ Error fetching examinations:', err);

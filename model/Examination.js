@@ -6,7 +6,8 @@ const questionSchema = new Schema({
   questionType: { type: String, required: true },
   mark: { type: Number, required: true },
   options: [String], // Optional, for MCQ
-  answer: String     // Optional, for subjective
+  answer: String,    // Optional, for subjective
+  imageUrl: String   // <-- Add this line
 }, { _id: false });
 
 const examinationSchema = new Schema({

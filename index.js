@@ -2317,7 +2317,7 @@ app.post('/examinations', async (req, res) => {
 app.get('/examinations/school/:id', async (req, res) => {
   try {
     const { id } = req.params; // schoolId
-    const { class: className, book, subject, examinationType } = req.query;
+    const { class: className, book, subject, examinationType, page = 1, pageSize = 10 } = req.query;
 
     // Build filter
     let filter = { school: id };
@@ -2334,10 +2334,22 @@ app.get('/examinations/school/:id', async (req, res) => {
       filter.examinationType = new RegExp(examinationType, 'i');
     }
 
-    const exams = await Examination.find(filter).lean();
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    const total = await Examination.countDocuments(filter);
+
+    const exams = await Examination.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     res.json({
-      total: exams.length,
+      total,
+      page: Number(page),
+      pageSize: Number(pageSize),
+      totalPages: Math.ceil(total / pageSize),
       examinations: exams
     });
   } catch (err) {

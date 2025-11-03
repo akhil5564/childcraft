@@ -2357,3 +2357,20 @@ app.get('/examinations/school/:id', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
+
+app.delete('/examinations/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedExam = await Examination.findByIdAndDelete(id);
+    if (!deletedExam) {
+      return res.status(404).json({ message: 'Examination not found' });
+    }
+    res.json({
+      message: 'Examination deleted successfully',
+      deletedId: deletedExam._id
+    });
+  } catch (err) {
+    console.error('❌ Error deleting examination:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});

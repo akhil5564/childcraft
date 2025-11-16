@@ -1169,14 +1169,14 @@ app.get('/allbooks', async (req, res) => {
     // Build filter dynamically
     const filter = {};
     if (book) filter.book = new RegExp(book, "i"); // case-insensitive search
-    if (subject) filter.subject = new RegExp(subject, "i");
+    if (subject) filter.subject = subject; // exact match
     if (bookClass) filter.class = String(bookClass);
 
     console.log("🛠 Applying filter:", filter);
 
     // Fetch books with pagination and sort by createdAt descending
     const books = await Book.find(filter)
-      .sort({ createdAt: -1 })  // Sort by creation date, newest first
+      .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
@@ -1204,7 +1204,6 @@ app.get('/allbooks', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 // Get school by ID
 app.get('/schools/:id', async (req, res) => {
   try {

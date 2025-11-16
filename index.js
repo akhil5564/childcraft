@@ -541,7 +541,7 @@ app.get('/books', async (req, res) => {
     // Build filter dynamically
     const filter = {};
     if (book) filter.book = new RegExp(book, "i"); // case-insensitive search
-    if (subject) filter.subject = new RegExp(subject, "i");
+    if (subject) filter.subject = subject; // exact match
     if (bookClass) filter.class = String(bookClass);
 
     console.log("🛠 Applying filter:", filter);
@@ -2199,9 +2199,7 @@ app.get('/books/filter', async (req, res) => {
     }
 
     // Add subject and class filters if provided
-    if (subject) {
-      filter.subject = new RegExp(subject, 'i');
-    }
+      if (subject) filter.subject = subject; // exact match
     if (className) {
       filter.class = className;
     }

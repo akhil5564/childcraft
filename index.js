@@ -1469,13 +1469,13 @@ app.post('/quizItems', async (req, res) => {
   try {
     console.log("📩 Incoming quiz data:", JSON.stringify(req.body, null, 2));
     
-    const { className, subject, book, title, chapter, questions } = req.body;
+    const { className, subject, book, title, chapter, questions, qtitle } = req.body;
 
-    // ✅ Validation - removed status validation
-    if (!className || !subject || !book || !chapter) {
+    // ✅ Validation - added qtitle field validation
+    if (!className || !subject || !book || !chapter || !qtitle) {
       return res.status(400).json({ 
-        message: 'Missing required fields: className, subject, book, chapter',
-        received: { className, subject, book, chapter }
+        message: 'Missing required fields: className, subject, book, chapter, qtitle',
+        received: { className, subject, book, chapter, qtitle }
       });
     }
     
@@ -1491,10 +1491,10 @@ app.post('/quizItems', async (req, res) => {
       const q = questions[i];
       
       if (!q.questionType || !q.question || !q.marks) {
-
         return res.status(400).json({
-     message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
-          question: q        });
+          message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
+          question: q
+        });
       }
 
       // Check if MCQ has options
@@ -1508,20 +1508,21 @@ app.post('/quizItems', async (req, res) => {
 
     console.log("✅ Validation passed, creating quiz...");
 
-    // ✅ Create new Quiz - status defaults to true
+    // ✅ Create new Quiz - status defaults to true, added qtitle field
     const newQuiz = new QuizItem({
       className,
       subject,
       book,
       title: title || `Quiz for ${chapter}`,
       chapter,
+      qtitle, // Added qtitle field
       questions
     });
 
     await newQuiz.save();
     console.log("✅ Quiz saved successfully:", newQuiz._id);
 
-    // ✅ Custom Response - removed correctAnswer from response
+    // ✅ Custom Response - added qtitle field to response
     res.status(201).json({
       id: newQuiz._id.toString(),
       className: newQuiz.className,
@@ -1529,6 +1530,7 @@ app.post('/quizItems', async (req, res) => {
       book: newQuiz.book,
       title: newQuiz.title,
       chapter: newQuiz.chapter,
+      qtitle: newQuiz.qtitle, // Added qtitle field to response
       questions: newQuiz.questions.map(q => ({
         questionType: q.questionType,
         question: q.question,

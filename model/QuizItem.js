@@ -52,7 +52,7 @@ const quizItemSchema = new Schema(
     book: { type: String, required: true },
     title: { type: String, required: true },
     chapter: { type: String, required: true },
-        name: { type: String, required: true }, 
+        qtitle: { type: String, required: true }, 
 
     status: { type: Boolean, default: true },
     questions: {

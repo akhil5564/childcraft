@@ -1469,13 +1469,13 @@ app.post('/quizItems', async (req, res) => {
   try {
     console.log("📩 Incoming quiz data:", JSON.stringify(req.body, null, 2));
     
-    const { className, subject, book, title, chapter, questions, qtitle } = req.body;
+    const { className, subject, book, title, chapter, questions, status } = req.body;
 
-    // ✅ Validation - added qtitle field validation
-    if (!className || !subject || !book || !chapter || !qtitle) {
+    // ✅ Validation
+    if (!className || !subject || !book || !chapter) {
       return res.status(400).json({ 
-        message: 'Missing required fields: className, subject, book, chapter, qtitle',
-        received: { className, subject, book, chapter, qtitle }
+        message: 'Missing required fields: className, subject, book, chapter',
+        received: { className, subject, book, chapter }
       });
     }
     
@@ -1486,21 +1486,21 @@ app.post('/quizItems', async (req, res) => {
       });
     }
 
-    // ✅ Validate each question - REMOVED correctAnswer validation completely
+    // ✅ Validate each question
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
-      if (!q.questionType || !q.question || !q.marks) {
+      if (!q.questionType || !q.question || !q.marks || !q.qtitle) {
         return res.status(400).json({
-          message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
+          message: `Question ${i + 1}: Missing required fields (questionType, question, marks, qtitle)`,
           question: q
         });
       }
 
-      // Check if MCQ has options
-      if (q.questionType === "mcq" && (!q.options || !Array.isArray(q.options) || q.options.length === 0)) {
+      // Check if Multiple Choice has options
+      if (q.questionType === "Multiple Choice" && (!q.options || !Array.isArray(q.options) || q.options.length === 0)) {
         return res.status(400).json({
-          message: `Question ${i + 1}: MCQ must have options array`,
+          message: `Question ${i + 1}: Multiple Choice must have options array`,
           question: q
         });
       }
@@ -1508,21 +1508,21 @@ app.post('/quizItems', async (req, res) => {
 
     console.log("✅ Validation passed, creating quiz...");
 
-    // ✅ Create new Quiz - status defaults to true, added qtitle field
+    // ✅ Create new Quiz
     const newQuiz = new QuizItem({
       className,
       subject,
       book,
       title: title || `Quiz for ${chapter}`,
       chapter,
-      qtitle, // Added qtitle field
+      status: status !== undefined ? status : true,
       questions
     });
 
     await newQuiz.save();
     console.log("✅ Quiz saved successfully:", newQuiz._id);
 
-    // ✅ Custom Response - added qtitle field to response
+    // ✅ Response
     res.status(201).json({
       id: newQuiz._id.toString(),
       className: newQuiz.className,
@@ -1530,8 +1530,9 @@ app.post('/quizItems', async (req, res) => {
       book: newQuiz.book,
       title: newQuiz.title,
       chapter: newQuiz.chapter,
-      qtitle: newQuiz.qtitle, // Added qtitle field to response
+      status: newQuiz.status,
       questions: newQuiz.questions.map(q => ({
+        qtitle: q.qtitle,
         questionType: q.questionType,
         question: q.question,
         marks: q.marks,

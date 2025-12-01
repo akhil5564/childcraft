@@ -13,29 +13,30 @@ const optionSchema = new Schema(
 // ✅ Question schema
 const questionSchema = new Schema(
   {
+    qtitle: { type: String, required: true }, // ✅ Added qtitle to each question
     questionType: {
       type: String,
       required: true,
-      enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture quistions",]
+      enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture quistions"]
     },
     question: { type: String, required: true },
     marks: { type: Number, required: true, min: 1 },
 
-    // Options only if MCQ
+    // Options only if Multiple Choice
     options: {
       type: [optionSchema],
       validate: {
         validator: function (val) {
-          return this.questionType !== "mcq" || (Array.isArray(val) && val.length > 0);
+          return this.questionType !== "Multiple Choice" || (Array.isArray(val) && val.length > 0);
         },
-        message: "MCQ must have at least one option"
+        message: "Multiple Choice must have at least one option"
       }
     },
 
     // Make correctAnswer completely optional
     correctAnswer: {
       type: Schema.Types.Mixed,
-      required: false // No validation, completely optional
+      required: false
     },
 
     // Store Cloudinary image URL
@@ -52,8 +53,6 @@ const quizItemSchema = new Schema(
     book: { type: String, required: true },
     title: { type: String, required: true },
     chapter: { type: String, required: true },
-        qtitle: { type: String, required: true }, 
-
     status: { type: Boolean, default: true },
     questions: {
       type: [questionSchema],

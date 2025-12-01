@@ -473,6 +473,7 @@ app.get('/qustion', async (req, res) => {
           questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
           quizId: quiz._id.toString(),
           questionIndex: questionIndex,
+          qtitle: ques.qtitle || null, // ✅ Added qtitle field
           question: ques.question,
           questionType: normalizedType,
           imageUrl: ques.imageUrl || null,
@@ -495,7 +496,8 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.question) ||
         regex.test(item.chapter) ||
         regex.test(item.subject) ||
-        regex.test(item.book)
+        regex.test(item.book) ||
+        regex.test(item.qtitle || '') // ✅ Also search in qtitle
       );
     }
 
@@ -524,7 +526,6 @@ app.get('/qustion', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 
 
 // GET /books?class=3&subject=English

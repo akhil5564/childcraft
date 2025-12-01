@@ -16,7 +16,7 @@ const questionSchema = new Schema(
     questionType: {
       type: String,
       required: true,
-      enum: ["mcq", "fillblank", "shortanswer", "essay", "matching", "image"]
+      enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture quistions",]
     },
     question: { type: String, required: true },
     marks: { type: Number, required: true, min: 1 },
@@ -52,6 +52,8 @@ const quizItemSchema = new Schema(
     book: { type: String, required: true },
     title: { type: String, required: true },
     chapter: { type: String, required: true },
+        name: { type: String, required: true }, 
+
     status: { type: Boolean, default: true },
     questions: {
       type: [questionSchema],

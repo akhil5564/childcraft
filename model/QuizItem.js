@@ -10,16 +10,41 @@ const optionSchema = new Schema(
   { _id: false }
 );
 
+// ✅ Sub-question schema (for Picture questions)
+const subQuestionSchema = new Schema(
+  {
+    text: { type: String, required: true }
+  },
+  { _id: false }
+);
+
 // ✅ Question schema
 const questionSchema = new Schema(
   {
-    qtitle: { type: String, required: false }, // ✅ Made qtitle optional since we handle it in the API
+    qtitle: { 
+      type: String, 
+      required: true,
+      validate: {
+        validator: function(value) {
+          return value && value.trim().length > 0;
+        },
+        message: 'qtitle must be provided and cannot be empty'
+      }
+    },
     questionType: {
       type: String,
       required: true,
       enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture questions"]
     },
     question: { type: String, required: true },
+    
+    // ✅ Add question1, question2, etc. fields directly
+    question1: { type: String, required: false },
+    question2: { type: String, required: false },
+    question3: { type: String, required: false },
+    question4: { type: String, required: false },
+    question5: { type: String, required: false },
+    
     marks: { type: Number, required: true, min: 1 },
 
     // Options only if Multiple Choice
@@ -30,6 +55,17 @@ const questionSchema = new Schema(
           return this.questionType !== "Multiple Choice" || (Array.isArray(val) && val.length > 0);
         },
         message: "Multiple Choice must have at least one option"
+      }
+    },
+
+    // Sub-questions for Picture questions
+    subQuestions: {
+      type: [subQuestionSchema],
+      validate: {
+        validator: function (val) {
+          return this.questionType !== "Picture questions" || (Array.isArray(val) && val.length > 0);
+        },
+        message: "Picture questions must have at least one sub-question"
       }
     },
 

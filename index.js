@@ -1491,7 +1491,7 @@ app.post('/quizItems', async (req, res) => {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
-      // Handle qtitle variations - check for qtitle first, then question1, question2, etc.
+      // Handle qtitle - use existing qtitle or fallback to questionX fields
       if (!q.qtitle) {
         // Find all questionX fields (question1, question2, question3, etc.)
         const questionKeys = Object.keys(q).filter(key => 
@@ -1503,19 +1503,28 @@ app.post('/quizItems', async (req, res) => {
           const firstQuestionKey = questionKeys[0];
           q.qtitle = q[firstQuestionKey];
           console.log(`📝 Using ${firstQuestionKey} as qtitle for question ${i + 1}: "${q.qtitle}"`);
-          
-          // Log if there are multiple questionX fields found
-          if (questionKeys.length > 1) {
-            console.log(`📋 Found multiple question fields: ${questionKeys.join(', ')} - using ${firstQuestionKey}`);
-          }
         } else {
           // If no qtitle or questionX found, use a default
           q.qtitle = `Question ${i + 1}`;
           console.log(`📝 Setting default qtitle for question ${i + 1}: "${q.qtitle}"`);
         }
       }
+
+      // Store additional questionX fields as metadata
+      const additionalQuestions = {};
+      Object.keys(q).forEach(key => {
+        if (key.match(/^question\d+$/i)) {
+          additionalQuestions[key] = q[key];
+          console.log(`📋 Found additional question field: ${key} = "${q[key]}"`);
+        }
+      });
+
+      // Add additional questions to the question object if any exist
+      if (Object.keys(additionalQuestions).length > 0) {
+        q.additionalQuestions = additionalQuestions;
+      }
       
-      // Basic validation for required fields (qtitle is now handled above)
+      // Basic validation for required fields
       if (!q.questionType || !q.question || !q.marks) {
         return res.status(400).json({
           message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
@@ -1527,6 +1536,22 @@ app.post('/quizItems', async (req, res) => {
       if (q.questionType === "Multiple Choice" && (!q.options || !Array.isArray(q.options) || q.options.length === 0)) {
         return res.status(400).json({
           message: `Question ${i + 1}: Multiple Choice must have options array`,
+          question: q
+        });
+      }
+
+      // Check if Picture questions has subQuestions
+      if (q.questionType === "Picture questions" && (!q.subQuestions || !Array.isArray(q.subQuestions) || q.subQuestions.length === 0)) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: Picture questions must have subQuestions array`,
+          question: q
+        });
+      }
+
+      // Validate imageUrl for Picture questions
+      if (q.questionType === "Picture questions" && !q.imageUrl) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: Picture questions must have an imageUrl`,
           question: q
         });
       }
@@ -1566,7 +1591,11 @@ app.post('/quizItems', async (req, res) => {
           text: opt.text, 
           isCorrect: opt.isCorrect 
         })) : [],
-        imageUrl: q.imageUrl || null
+        subQuestions: q.subQuestions ? q.subQuestions.map(sub => ({
+          text: sub.text
+        })) : [],
+        imageUrl: q.imageUrl || null,
+        additionalQuestions: q.additionalQuestions || {} // ✅ Include additional question fields
       })),
       createdAt: newQuiz.createdAt.toISOString(),
       message: 'Quiz created successfully'

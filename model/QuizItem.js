@@ -17,7 +17,7 @@ const questionSchema = new Schema(
     questionType: {
       type: String,
       required: true,
-      enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture quistions"]
+      enum: ["Multiple Choice", "Direct Questions", "Answer the following questions", "Picture questions"]
     },
     question: { type: String, required: true },
     marks: { type: Number, required: true, min: 1 },

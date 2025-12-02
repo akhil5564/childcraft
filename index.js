@@ -393,6 +393,8 @@ app.get('/random-gen', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
+
+
 app.get('/qustion', async (req, res) => {
   try {
     const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10 } = req.query;
@@ -475,10 +477,17 @@ app.get('/qustion', async (req, res) => {
           questionIndex: questionIndex,
           qtitle: ques.qtitle || null, // ✅ Added qtitle field
           question: ques.question,
+          // ✅ Include all questionX fields
+          question1: ques.question1 || null,
+          question2: ques.question2 || null,
+          question3: ques.question3 || null,
+          question4: ques.question4 || null,
+          question5: ques.question5 || null,
           questionType: normalizedType,
           imageUrl: ques.imageUrl || null,
           marks: ques.marks || null,
           options: ques.options || [],
+          subQuestions: ques.subQuestions || [], // ✅ Include subQuestions for Picture questions
           subject: quiz.subject,
           className: quiz.className,
           chapter: quiz.chapter,
@@ -497,7 +506,12 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.chapter) ||
         regex.test(item.subject) ||
         regex.test(item.book) ||
-        regex.test(item.qtitle || '') // ✅ Also search in qtitle
+        regex.test(item.qtitle || '') || // ✅ Also search in qtitle
+        regex.test(item.question1 || '') || // ✅ Search in question1
+        regex.test(item.question2 || '') || // ✅ Search in question2
+        regex.test(item.question3 || '') || // ✅ Search in question3
+        regex.test(item.question4 || '') || // ✅ Search in question4
+        regex.test(item.question5 || '')    // ✅ Search in question5
       );
     }
 

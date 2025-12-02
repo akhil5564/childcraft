@@ -1655,16 +1655,25 @@ app.get('/quizItems/:id', async (req, res) => {
       status: quiz.status,
       questions: quiz.questions.map((q, index) => ({
         questionIndex: index,
+        qtitle: q.qtitle || null, // ✅ Added qtitle field
         questionType: q.questionType,
         question: q.question,
+        // ✅ Include all questionX fields
+        question1: q.question1 || null,
+        question2: q.question2 || null,
+        question3: q.question3 || null,
+        question4: q.question4 || null,
+        question5: q.question5 || null,
         marks: q.marks,
         options: q.options || [],
+        subQuestions: q.subQuestions || [], // ✅ Include subQuestions for Picture questions
         correctAnswer: q.correctAnswer || null,
         imageUrl: q.imageUrl || null
       })),
       questionCount: quiz.questions.length,
       totalMarks: quiz.questions.reduce((sum, q) => sum + (q.marks || 0), 0),
       hasImages: quiz.questions.some(q => q.imageUrl),
+      hasPictureQuestions: quiz.questions.some(q => q.questionType === "Picture questions"), // ✅ Added indicator for Picture questions
       createdAt: quiz.createdAt.toISOString(),
       updatedAt: quiz.updatedAt.toISOString()
     });

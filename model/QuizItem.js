@@ -13,7 +13,7 @@ const optionSchema = new Schema(
 // ✅ Question schema
 const questionSchema = new Schema(
   {
-    qtitle: { type: String, required: true }, // ✅ Added qtitle to each question
+    qtitle: { type: String, required: false }, // ✅ Made qtitle optional since we handle it in the API
     questionType: {
       type: String,
       required: true,

@@ -1487,13 +1487,38 @@ app.post('/quizItems', async (req, res) => {
       });
     }
 
-    // ✅ Validate each question
+    // ✅ Validate and normalize each question
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       
-      if (!q.questionType || !q.question || !q.marks || !q.qtitle) {
+      // Handle qtitle variations - check for qtitle first, then question1, question2, etc.
+      if (!q.qtitle) {
+        // Find all questionX fields (question1, question2, question3, etc.)
+        const questionKeys = Object.keys(q).filter(key => 
+          key.match(/^question\d+$/i) // matches question1, question2, etc.
+        ).sort(); // Sort to get question1, question2, question3 in order
+        
+        if (questionKeys.length > 0) {
+          // Use the first available questionX field as qtitle
+          const firstQuestionKey = questionKeys[0];
+          q.qtitle = q[firstQuestionKey];
+          console.log(`📝 Using ${firstQuestionKey} as qtitle for question ${i + 1}: "${q.qtitle}"`);
+          
+          // Log if there are multiple questionX fields found
+          if (questionKeys.length > 1) {
+            console.log(`📋 Found multiple question fields: ${questionKeys.join(', ')} - using ${firstQuestionKey}`);
+          }
+        } else {
+          // If no qtitle or questionX found, use a default
+          q.qtitle = `Question ${i + 1}`;
+          console.log(`📝 Setting default qtitle for question ${i + 1}: "${q.qtitle}"`);
+        }
+      }
+      
+      // Basic validation for required fields (qtitle is now handled above)
+      if (!q.questionType || !q.question || !q.marks) {
         return res.status(400).json({
-          message: `Question ${i + 1}: Missing required fields (questionType, question, marks, qtitle)`,
+          message: `Question ${i + 1}: Missing required fields (questionType, question, marks)`,
           question: q
         });
       }

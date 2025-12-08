@@ -404,7 +404,15 @@ app.get('/qustion', async (req, res) => {
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
     if (book) filter.book = new RegExp(book, "i");
-    if (title) filter.title = new RegExp(title, "i"); // ✅ Added title filter
+
+    // ✅ Handle multiple titles (similar to chapters)
+    if (title) {
+      const titleArray = Array.isArray(title) ? title : title.split(',');
+      filter.title = { 
+        $in: titleArray.map(t => new RegExp(t.trim(), "i")) 
+      };
+      console.log('🎯 Title filters:', titleArray);
+    }
 
     // Handle multiple chapters
     if (chapters) {
@@ -458,7 +466,7 @@ app.get('/qustion', async (req, res) => {
 
     let normalizedTypes = [];
 
-    // Handle multiple question types with normalization
+    // ✅ Handle multiple question types with normalization
     if (questionTypes) {
       const typeArray = questionTypes.split(',').map(t => t.trim());
       normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
@@ -497,20 +505,20 @@ app.get('/qustion', async (req, res) => {
           questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
           quizId: quiz._id.toString(),
           questionIndex: questionIndex,
-          qtitle: ques.qtitle || null, // ✅ Added qtitle field
+          qtitle: ques.qtitle || null,
           question: ques.question,
-          // ✅ Include all questionX fields
+          // Include all questionX fields
           question1: ques.question1 || null,
           question2: ques.question2 || null,
           question3: ques.question3 || null,
           question4: ques.question4 || null,
           question5: ques.question5 || null,
-          questionType: ques.questionType, // Use original questionType from schema
+          questionType: ques.questionType,
           imageUrl: ques.imageUrl || null,
           marks: ques.marks || null,
           options: ques.options || [],
-          subQuestions: ques.subQuestions || [], // ✅ Include subQuestions for Picture questions
-          correctAnswer: ques.correctAnswer || null, // ✅ Include correctAnswer
+          subQuestions: ques.subQuestions || [],
+          correctAnswer: ques.correctAnswer || null,
           subject: quiz.subject,
           className: quiz.className,
           chapter: quiz.chapter,
@@ -529,14 +537,13 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.chapter) ||
         regex.test(item.subject) ||
         regex.test(item.book) ||
-        regex.test(item.quizTitle || '') || // ✅ Also search in quiz title
-        regex.test(item.qtitle || '') || // ✅ Also search in qtitle
-        regex.test(item.question1 || '') || // ✅ Search in question1
-        regex.test(item.question2 || '') || // ✅ Search in question2
-        regex.test(item.question3 || '') || // ✅ Search in question3
-        regex.test(item.question4 || '') || // ✅ Search in question4
-        regex.test(item.question5 || '') || // ✅ Search in question5
-        // ✅ Also search in subQuestions text
+        regex.test(item.quizTitle || '') ||
+        regex.test(item.qtitle || '') ||
+        regex.test(item.question1 || '') ||
+        regex.test(item.question2 || '') ||
+        regex.test(item.question3 || '') ||
+        regex.test(item.question4 || '') ||
+        regex.test(item.question5 || '') ||
         item.subQuestions.some(sub => regex.test(sub.text || ''))
       );
     }
@@ -544,6 +551,12 @@ app.get('/qustion', async (req, res) => {
     // Group questions by type for statistics
     const typeStats = results.reduce((acc, q) => {
       acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
+    // ✅ Group questions by title for statistics
+    const titleStats = results.reduce((acc, q) => {
+      acc[q.quizTitle] = (acc[q.quizTitle] || 0) + 1;
       return acc;
     }, {});
 
@@ -558,12 +571,13 @@ app.get('/qustion', async (req, res) => {
       limit: Number(limit),
       totalPages: Math.ceil(results.length / limit),
       questionTypes: typeStats,
+      titleStats: titleStats, // ✅ Added title statistics
       availableQuestionTypes: [
         "Multiple Choice",
         "Direct Questions", 
         "Answer the following questions",
         "Picture questions"
-      ], // ✅ Show available question types from schema
+      ],
       data: paginated
     });
 

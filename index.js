@@ -397,13 +397,14 @@ app.get('/random-gen', async (req, res) => {
 
 app.get('/qustion', async (req, res) => {
   try {
-    const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10 } = req.query;
+    const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10, title } = req.query;
 
     // Build dynamic filter
     let filter = {};
     if (subject) filter.subject = new RegExp(subject, "i");
     if (className) filter.className = String(className);
     if (book) filter.book = new RegExp(book, "i");
+    if (title) filter.title = new RegExp(title, "i"); // ✅ Added title filter
 
     // Handle multiple chapters
     if (chapters) {
@@ -413,23 +414,46 @@ app.get('/qustion', async (req, res) => {
       };
     }
 
-    // Normalize question types to handle different cases
+    // Normalize question types to match your schema
     const normalizeQuestionType = (type) => {
       const types = {
-        'fillblank': 'fillblank',
-        'fillintheblank': 'fillblank',
-        'fill_in_the_blank': 'fillblank',
-        'shortanswer': 'shortanswer',  // Changed to match database
-        'short_answer': 'shortanswer',  // Changed to match database
-        'short_answer': 'shortanswer',
-        'short answer': 'shortanswer',  // Added space variant
-        'longanswer': 'longanswer',
-        'long_answer': 'longanswer',
-        'essay': 'essay',
-        'mcq': 'mcq',
-        'image': 'image'
+        // Map common variations to your schema enum values
+        'mcq': 'Multiple Choice',
+        'multiple_choice': 'Multiple Choice',
+        'multiplechoice': 'Multiple Choice',
+        'multiple choice': 'Multiple Choice',
+        
+        'direct': 'Direct Questions',
+        'direct_questions': 'Direct Questions',
+        'directquestions': 'Direct Questions',
+        'direct questions': 'Direct Questions',
+        
+        'answer': 'Answer the following questions',
+        'answer_following': 'Answer the following questions',
+        'answerfollowing': 'Answer the following questions',
+        'answer the following questions': 'Answer the following questions',
+        'answer_the_following_questions': 'Answer the following questions',
+        
+        'picture': 'Picture questions',
+        'picture_questions': 'Picture questions',
+        'picturequestions': 'Picture questions',
+        'picture questions': 'Picture questions',
+        'image': 'Picture questions',
+        
+        // Legacy support for old types
+        'fillblank': 'Direct Questions',
+        'fillintheblank': 'Direct Questions',
+        'fill_in_the_blank': 'Direct Questions',
+        'shortanswer': 'Direct Questions',
+        'short_answer': 'Direct Questions',
+        'short answer': 'Direct Questions',
+        'longanswer': 'Answer the following questions',
+        'long_answer': 'Answer the following questions',
+        'essay': 'Answer the following questions'
       };
-      return types[type.toLowerCase()] || type.toLowerCase();
+      
+      const normalized = types[type.toLowerCase()];
+      return normalized || type; // Return original if no mapping found
     };
 
     let normalizedTypes = [];
@@ -441,8 +465,9 @@ app.get('/qustion', async (req, res) => {
       console.log('🔍 Original question types:', typeArray);
       console.log('✨ Normalized question types:', normalizedTypes);
       
+      // Filter by exact match for question types from schema enum
       filter["questions.questionType"] = { 
-        $in: normalizedTypes.map(type => new RegExp(type, 'i'))
+        $in: normalizedTypes
       };
     }
 
@@ -463,11 +488,8 @@ app.get('/qustion', async (req, res) => {
       }
       
       return quiz.questions.map((ques, questionIndex) => {
-        // Normalize the question type before comparison
-        const normalizedType = normalizeQuestionType(ques.questionType);
-        
         // Only include questions if they match the requested types
-        if (questionTypes && !normalizedTypes.includes(normalizedType)) {
+        if (questionTypes && !normalizedTypes.includes(ques.questionType)) {
           return null;
         }
 
@@ -483,11 +505,12 @@ app.get('/qustion', async (req, res) => {
           question3: ques.question3 || null,
           question4: ques.question4 || null,
           question5: ques.question5 || null,
-          questionType: normalizedType,
+          questionType: ques.questionType, // Use original questionType from schema
           imageUrl: ques.imageUrl || null,
           marks: ques.marks || null,
           options: ques.options || [],
           subQuestions: ques.subQuestions || [], // ✅ Include subQuestions for Picture questions
+          correctAnswer: ques.correctAnswer || null, // ✅ Include correctAnswer
           subject: quiz.subject,
           className: quiz.className,
           chapter: quiz.chapter,
@@ -506,12 +529,15 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.chapter) ||
         regex.test(item.subject) ||
         regex.test(item.book) ||
+        regex.test(item.quizTitle || '') || // ✅ Also search in quiz title
         regex.test(item.qtitle || '') || // ✅ Also search in qtitle
         regex.test(item.question1 || '') || // ✅ Search in question1
         regex.test(item.question2 || '') || // ✅ Search in question2
         regex.test(item.question3 || '') || // ✅ Search in question3
         regex.test(item.question4 || '') || // ✅ Search in question4
-        regex.test(item.question5 || '')    // ✅ Search in question5
+        regex.test(item.question5 || '') || // ✅ Search in question5
+        // ✅ Also search in subQuestions text
+        item.subQuestions.some(sub => regex.test(sub.text || ''))
       );
     }
 
@@ -532,6 +558,12 @@ app.get('/qustion', async (req, res) => {
       limit: Number(limit),
       totalPages: Math.ceil(results.length / limit),
       questionTypes: typeStats,
+      availableQuestionTypes: [
+        "Multiple Choice",
+        "Direct Questions", 
+        "Answer the following questions",
+        "Picture questions"
+      ], // ✅ Show available question types from schema
       data: paginated
     });
 
@@ -540,7 +572,6 @@ app.get('/qustion', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 
 // GET /books?class=3&subject=English
 // ✅ Get books with subject & class filter

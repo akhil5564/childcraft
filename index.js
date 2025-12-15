@@ -425,7 +425,6 @@ app.get('/qustion', async (req, res) => {
     // Normalize question types to match your schema
     const normalizeQuestionType = (type) => {
       const types = {
-        // Map common variations to your schema enum values
         'mcq': 'Multiple Choice',
         'multiple_choice': 'Multiple Choice',
         'multiplechoice': 'Multiple Choice',
@@ -448,7 +447,6 @@ app.get('/qustion', async (req, res) => {
         'picture questions': 'Picture questions',
         'image': 'Picture questions',
         
-        // Legacy support for old types
         'fillblank': 'Direct Questions',
         'fillintheblank': 'Direct Questions',
         'fill_in_the_blank': 'Direct Questions',
@@ -461,25 +459,20 @@ app.get('/qustion', async (req, res) => {
       };
       
       const normalized = types[type.toLowerCase()];
-      return normalized || type; // Return original if no mapping found
+      return normalized || type;
     };
 
     let normalizedTypes = [];
 
-    // ✅ Handle multiple question types with normalization
+    // ✅ Handle multiple question types
     if (questionTypes) {
       const typeArray = questionTypes.split(',').map(t => t.trim());
       normalizedTypes = typeArray.map(t => normalizeQuestionType(t));
       console.log('🔍 Original question types:', typeArray);
       console.log('✨ Normalized question types:', normalizedTypes);
-      
-      // Filter by exact match for question types from schema enum
-      filter["questions.questionType"] = { 
-        $in: normalizedTypes
-      };
     }
 
-    console.log("🔍 Applied filters:", JSON.stringify(filter, null, 2));
+    console.log("🔍 Applied MongoDB filters:", JSON.stringify(filter, null, 2));
 
     // Fetch quizzes
     const quizzes = await QuizItem.find(filter)
@@ -487,17 +480,31 @@ app.get('/qustion', async (req, res) => {
       .select("className subject chapter book title questions createdAt")
       .lean();
 
-    console.log("📚 Found quizzes:", quizzes.length);
+    console.log("📚 Found quizzes with filters:", quizzes.length);
+
+    // ✅ If no quizzes found with filters, fetch ALL quizzes
+    let finalQuizzes = quizzes;
+    let filtersApplied = true;
+    
+    if (quizzes.length === 0 && Object.keys(filter).length > 0) {
+      console.log("⚠️ No quizzes matched filters, fetching all quizzes...");
+      finalQuizzes = await QuizItem.find({})
+        .sort({ createdAt: -1 })
+        .select("className subject chapter book title questions createdAt")
+        .lean();
+      filtersApplied = false;
+      console.log("📚 Total quizzes in database:", finalQuizzes.length);
+    }
 
     // Flatten into individual questions
-    let results = quizzes.flatMap(quiz => {
+    let results = finalQuizzes.flatMap(quiz => {
       if (!quiz.questions || !Array.isArray(quiz.questions)) {
         return [];
       }
       
       return quiz.questions.map((ques, questionIndex) => {
-        // Only include questions if they match the requested types
-        if (questionTypes && !normalizedTypes.includes(ques.questionType)) {
+        // ✅ Only filter by question type if filters were successfully applied
+        if (filtersApplied && questionTypes && normalizedTypes.length > 0 && !normalizedTypes.includes(ques.questionType)) {
           return null;
         }
 
@@ -507,7 +514,6 @@ app.get('/qustion', async (req, res) => {
           questionIndex: questionIndex,
           qtitle: ques.qtitle || null,
           question: ques.question,
-          // Include all questionX fields
           question1: ques.question1 || null,
           question2: ques.question2 || null,
           question3: ques.question3 || null,
@@ -528,6 +534,8 @@ app.get('/qustion', async (req, res) => {
         };
       }).filter(q => q !== null);
     });
+
+    console.log("✅ Total questions after filtering:", results.length);
 
     // Extra text search
     if (q) {
@@ -554,7 +562,7 @@ app.get('/qustion', async (req, res) => {
       return acc;
     }, {});
 
-    // ✅ Group questions by title for statistics
+    // Group questions by title for statistics
     const titleStats = results.reduce((acc, q) => {
       acc[q.quizTitle] = (acc[q.quizTitle] || 0) + 1;
       return acc;
@@ -570,14 +578,23 @@ app.get('/qustion', async (req, res) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(results.length / limit),
+      filtersApplied: filtersApplied, // ✅ Indicates if filters were applied
       questionTypes: typeStats,
-      titleStats: titleStats, // ✅ Added title statistics
+      titleStats: titleStats,
       availableQuestionTypes: [
         "Multiple Choice",
         "Direct Questions", 
         "Answer the following questions",
         "Picture questions"
       ],
+      filters: {
+        subject,
+        className,
+        book,
+        chapters: chapters ? chapters.split(',') : [],
+        titles: title ? (Array.isArray(title) ? title : title.split(',')) : [],
+        questionTypes: normalizedTypes
+      },
       data: paginated
     });
 
@@ -586,7 +603,6 @@ app.get('/qustion', async (req, res) => {
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
-
 // GET /books?class=3&subject=English
 // ✅ Get books with subject & class filter
 app.get('/books', async (req, res) => {

@@ -2361,6 +2361,13 @@ app.post('/quizItems', async (req, res) => {
         }
       }
 
+      // ✅ Handle section field (optional)
+      if (q.section) {
+        console.log(`📑 Section for question ${i + 1}: "${q.section}"`);
+      } else {
+        q.section = null; // Explicitly set to null if not provided
+      }
+
       // Store additional questionX fields as metadata
       const additionalQuestions = {};
       Object.keys(q).forEach(key => {
@@ -2435,8 +2442,14 @@ app.post('/quizItems', async (req, res) => {
       status: newQuiz.status,
       questions: newQuiz.questions.map(q => ({
         qtitle: q.qtitle,
+        section: q.section || null, // ✅ Include section field
         questionType: q.questionType,
         question: q.question,
+        question1: q.question1 || null, // ✅ Include question1
+        question2: q.question2 || null, // ✅ Include question2
+        question3: q.question3 || null, // ✅ Include question3
+        question4: q.question4 || null, // ✅ Include question4
+        question5: q.question5 || null, // ✅ Include question5
         marks: q.marks,
         options: q.options ? q.options.map(opt => ({ 
           text: opt.text, 
@@ -2446,7 +2459,7 @@ app.post('/quizItems', async (req, res) => {
           text: sub.text
         })) : [],
         imageUrl: q.imageUrl || null,
-        additionalQuestions: q.additionalQuestions || {} // ✅ Include additional question fields
+        correctAnswer: q.correctAnswer || null // ✅ Include correctAnswer
       })),
       createdAt: newQuiz.createdAt.toISOString(),
       message: 'Quiz created successfully'

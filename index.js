@@ -513,6 +513,7 @@ app.get('/qustion', async (req, res) => {
           quizId: quiz._id.toString(),
           questionIndex: questionIndex,
           qtitle: ques.qtitle || null,
+          section: ques.section || null, // ✅ Added section field
           question: ques.question,
           question1: ques.question1 || null,
           question2: ques.question2 || null,
@@ -547,6 +548,7 @@ app.get('/qustion', async (req, res) => {
         regex.test(item.book) ||
         regex.test(item.quizTitle || '') ||
         regex.test(item.qtitle || '') ||
+        regex.test(item.section || '') || // ✅ Added section to search
         regex.test(item.question1 || '') ||
         regex.test(item.question2 || '') ||
         regex.test(item.question3 || '') ||
@@ -568,6 +570,13 @@ app.get('/qustion', async (req, res) => {
       return acc;
     }, {});
 
+    // ✅ Group questions by section for statistics
+    const sectionStats = results.reduce((acc, q) => {
+      const section = q.section || 'No Section';
+      acc[section] = (acc[section] || 0) + 1;
+      return acc;
+    }, {});
+
     // Pagination
     const start = (page - 1) * limit;
     const end = start + parseInt(limit);
@@ -578,9 +587,10 @@ app.get('/qustion', async (req, res) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(results.length / limit),
-      filtersApplied: filtersApplied, // ✅ Indicates if filters were applied
+      filtersApplied: filtersApplied,
       questionTypes: typeStats,
       titleStats: titleStats,
+      sectionStats: sectionStats, // ✅ Added section statistics
       availableQuestionTypes: [
         "Multiple Choice",
         "Direct Questions", 
@@ -2505,10 +2515,10 @@ app.get('/quizItems/:id', async (req, res) => {
       status: quiz.status,
       questions: quiz.questions.map((q, index) => ({
         questionIndex: index,
-        qtitle: q.qtitle || null, // ✅ Added qtitle field
+        qtitle: q.qtitle || null,
+        section: q.section || null, // ✅ Added section field
         questionType: q.questionType,
         question: q.question,
-        // ✅ Include all questionX fields
         question1: q.question1 || null,
         question2: q.question2 || null,
         question3: q.question3 || null,
@@ -2516,14 +2526,14 @@ app.get('/quizItems/:id', async (req, res) => {
         question5: q.question5 || null,
         marks: q.marks,
         options: q.options || [],
-        subQuestions: q.subQuestions || [], // ✅ Include subQuestions for Picture questions
+        subQuestions: q.subQuestions || [],
         correctAnswer: q.correctAnswer || null,
         imageUrl: q.imageUrl || null
       })),
       questionCount: quiz.questions.length,
       totalMarks: quiz.questions.reduce((sum, q) => sum + (q.marks || 0), 0),
       hasImages: quiz.questions.some(q => q.imageUrl),
-      hasPictureQuestions: quiz.questions.some(q => q.questionType === "Picture questions"), // ✅ Added indicator for Picture questions
+      hasPictureQuestions: quiz.questions.some(q => q.questionType === "Picture questions"),
       createdAt: quiz.createdAt.toISOString(),
       updatedAt: quiz.updatedAt.toISOString()
     });
@@ -2539,7 +2549,7 @@ app.put('/quizItems/:id', async (req, res) => {
     const { id } = req.params;
     const { className, subject, book, chapter, status, questions, title } = req.body;
 
-    // ✅ Validation (optional: only required fields)
+    // ✅ Validation
     if (!className || !subject || !book || !chapter) {
       return res.status(400).json({ message: 'Missing required fields: className, subject, book, chapter' });
     }
@@ -2562,14 +2572,29 @@ app.put('/quizItems/:id', async (req, res) => {
       className: updatedQuiz.className,
       subject: updatedQuiz.subject,
       book: updatedQuiz.book,
+      title: updatedQuiz.title,
       chapter: updatedQuiz.chapter,
       status: updatedQuiz.status,
       questions: updatedQuiz.questions.map(q => ({
+        qtitle: q.qtitle || null,
+        section: q.section || null, // ✅ Added section field
         questionType: q.questionType,
         question: q.question,
+        question1: q.question1 || null,
+        question2: q.question2 || null,
+        question3: q.question3 || null,
+        question4: q.question4 || null,
+        question5: q.question5 || null,
         marks: q.marks,
-        options: q.options.map(opt => ({ text: opt.text })),
-        image: q.image
+        options: q.options ? q.options.map(opt => ({ 
+          text: opt.text,
+          isCorrect: opt.isCorrect 
+        })) : [],
+        subQuestions: q.subQuestions ? q.subQuestions.map(sub => ({
+          text: sub.text
+        })) : [],
+        correctAnswer: q.correctAnswer || null,
+        imageUrl: q.imageUrl || null
       })),
       updatedAt: updatedQuiz.updatedAt.toISOString(),
       message: 'Quiz item updated successfully'
@@ -2580,7 +2605,6 @@ app.put('/quizItems/:id', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
-
 // Add this route after your POST /quizItems route
 
 // GET all QuizItems with filtering and pagination

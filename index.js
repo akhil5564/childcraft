@@ -760,6 +760,782 @@ app.get('/chapterd', async (req, res) => {
   }
 });
 
+
+
+
+// ✅ API to filter quizzes by title(s)
+app.get('/quizzes/by-title', async (req, res) => {
+  try {
+    const { title, page = 1, limit = 10 } = req.query;
+
+    if (!title) {
+      return res.status(400).json({ 
+        message: 'Title parameter is required',
+        example: '/quizzes/by-title?title=Nexus Class -3 Term -3'
+      });
+    }
+
+    // Handle multiple titles separated by comma
+    const titleArray = Array.isArray(title) ? title : title.split(',');
+    
+    // Build filter with regex for case-insensitive partial matching
+    const filter = {
+      title: { 
+        $in: titleArray.map(t => new RegExp(t.trim(), "i")) 
+      }
+    };
+
+    console.log('🎯 Searching for titles:', titleArray);
+    console.log('🔍 Filter:', JSON.stringify(filter, null, 2));
+
+    // Fetch quizzes matching the title(s)
+    const quizzes = await QuizItem.find(filter)
+      .sort({ createdAt: -1 })
+      .select("className subject chapter book title questions status createdAt updatedAt")
+      .lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes matching title filter`);
+
+    if (quizzes.length === 0) {
+      // Get sample titles to help user
+      const sampleTitles = await QuizItem.distinct('title').limit(10);
+      
+      return res.json({
+        total: 0,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: 0,
+        message: 'No quizzes found with the given title(s)',
+        searchedTitles: titleArray,
+        availableTitles: sampleTitles.slice(0, 10),
+        data: []
+      });
+    }
+
+    // Flatten into individual questions
+    let results = quizzes.flatMap(quiz => {
+      if (!quiz.questions || !Array.isArray(quiz.questions)) {
+        return [];
+      }
+      
+      return quiz.questions.map((ques, questionIndex) => ({
+        questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+        quizId: quiz._id.toString(),
+        questionIndex: questionIndex,
+        qtitle: ques.qtitle || null,
+        question: ques.question,
+        question1: ques.question1 || null,
+        question2: ques.question2 || null,
+        question3: ques.question3 || null,
+        question4: ques.question4 || null,
+        question5: ques.question5 || null,
+        questionType: ques.questionType,
+        imageUrl: ques.imageUrl || null,
+        marks: ques.marks || null,
+        options: ques.options || [],
+        subQuestions: ques.subQuestions || [],
+        correctAnswer: ques.correctAnswer || null,
+        subject: quiz.subject,
+        className: quiz.className,
+        chapter: quiz.chapter,
+        book: quiz.book,
+        quizTitle: quiz.title,
+        quizStatus: quiz.status,
+        createdAt: quiz.createdAt
+      }));
+    });
+
+    // Group statistics
+    const titleStats = results.reduce((acc, q) => {
+      acc[q.quizTitle] = (acc[q.quizTitle] || 0) + 1;
+      return acc;
+    }, {});
+
+    const questionTypeStats = results.reduce((acc, q) => {
+      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = results.slice(start, end);
+
+    res.json({
+      total: results.length,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(results.length / limit),
+      quizzesFound: quizzes.length,
+      searchedTitles: titleArray,
+      titleStats: titleStats,
+      questionTypeStats: questionTypeStats,
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error('❌ Error filtering by title:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ API to get all unique titles (helper endpoint)
+// ✅ API to filter quizzes by title(s) and return ALL questions
+app.get('/quizzes/by-title', async (req, res) => {
+  try {
+    const { title, page = 1, limit = 100 } = req.query; // ✅ Increased default limit to 100
+
+    if (!title) {
+      return res.status(400).json({ 
+        message: 'Title parameter is required',
+        example: '/quizzes/by-title?title=Tick the correct answers'
+      });
+    }
+
+    // Handle multiple titles separated by comma
+    const titleArray = Array.isArray(title) ? title : title.split(',');
+    
+    // Build filter with exact and partial matching
+    const filter = {
+      title: { 
+        $in: titleArray.map(t => new RegExp(`^${t.trim()}$`, "i")) // ✅ Exact match with case insensitive
+      }
+    };
+
+    console.log('🎯 Searching for titles:', titleArray);
+    console.log('🔍 Filter:', JSON.stringify(filter, null, 2));
+
+    // Fetch quizzes matching the title(s)
+    const quizzes = await QuizItem.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes matching title: "${title}"`);
+
+    if (quizzes.length === 0) {
+      // Get sample titles to help user
+      const allTitles = await QuizItem.distinct('title');
+      
+      console.log('⚠️ No exact match found. Available titles:', allTitles);
+      
+      return res.json({
+        total: 0,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: 0,
+        message: `No quizzes found with title: "${title}"`,
+        searchedTitle: title,
+        availableTitles: allTitles,
+        suggestion: 'Check the availableTitles list for exact title names',
+        data: []
+      });
+    }
+
+    // Flatten ALL questions from matched quizzes
+    let allQuestions = [];
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((ques, questionIndex) => {
+          allQuestions.push({
+            questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+            quizId: quiz._id.toString(),
+            questionIndex: questionIndex,
+            qtitle: ques.qtitle || null,
+            question: ques.question,
+            question1: ques.question1 || null,
+            question2: ques.question2 || null,
+            question3: ques.question3 || null,
+            question4: ques.question4 || null,
+            question5: ques.question5 || null,
+            questionType: ques.questionType,
+            imageUrl: ques.imageUrl || null,
+            marks: ques.marks || null,
+            options: ques.options || [],
+            subQuestions: ques.subQuestions || [],
+            correctAnswer: ques.correctAnswer || null,
+            subject: quiz.subject,
+            className: quiz.className,
+            chapter: quiz.chapter,
+            book: quiz.book,
+            quizTitle: quiz.title,
+            quizStatus: quiz.status,
+            createdAt: quiz.createdAt
+          });
+        });
+      }
+    });
+
+    console.log(`✅ Total questions found: ${allQuestions.length}`);
+
+    // Group statistics
+    const questionTypeStats = allQuestions.reduce((acc, q) => {
+      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
+    const chapterStats = allQuestions.reduce((acc, q) => {
+      acc[q.chapter] = (acc[q.chapter] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = allQuestions.slice(start, end);
+
+    res.json({
+      success: true,
+      total: allQuestions.length,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(allQuestions.length / limit),
+      quizzesFound: quizzes.length,
+      searchedTitle: title,
+      statistics: {
+        totalQuestions: allQuestions.length,
+        questionTypes: questionTypeStats,
+        chapters: chapterStats
+      },
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error('❌ Error filtering by title:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ API to filter quizzes by title(s) and return ALL questions
+app.get('/quizzes/by-title', async (req, res) => {
+  try {
+    const { title, page = 1, limit = 100 } = req.query;
+
+    if (!title) {
+      return res.status(400).json({ 
+        message: 'Title parameter is required',
+        example: '/quizzes/by-title?title=Tick the correct answers'
+      });
+    }
+
+    // Handle multiple titles separated by comma
+    const titleArray = Array.isArray(title) ? title : title.split(',');
+    
+    // Build filter with exact and partial matching
+    const filter = {
+      title: { 
+        $in: titleArray.map(t => new RegExp(`^${t.trim()}$`, "i"))
+      }
+    };
+
+    console.log('🎯 Searching for titles:', titleArray);
+    console.log('🔍 Filter:', JSON.stringify(filter, null, 2));
+
+    // Fetch quizzes matching the title(s)
+    const quizzes = await QuizItem.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes matching title: "${title}"`);
+
+    if (quizzes.length === 0) {
+      // Get sample titles to help user - FIXED: removed .limit()
+      const allTitles = await QuizItem.distinct('title');
+      
+      console.log('⚠️ No exact match found. Available titles:', allTitles);
+      
+      return res.json({
+        total: 0,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: 0,
+        message: `No quizzes found with title: "${title}"`,
+        searchedTitle: title,
+        availableTitles: allTitles.slice(0, 20), // ✅ Limit in JavaScript instead
+        suggestion: 'Check the availableTitles list for exact title names',
+        data: []
+      });
+    }
+
+    // Flatten ALL questions from matched quizzes
+    let allQuestions = [];
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((ques, questionIndex) => {
+          allQuestions.push({
+            questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+            quizId: quiz._id.toString(),
+            questionIndex: questionIndex,
+            qtitle: ques.qtitle || null,
+            question: ques.question,
+            question1: ques.question1 || null,
+            question2: ques.question2 || null,
+            question3: ques.question3 || null,
+            question4: ques.question4 || null,
+            question5: ques.question5 || null,
+            questionType: ques.questionType,
+            imageUrl: ques.imageUrl || null,
+            marks: ques.marks || null,
+            options: ques.options || [],
+            subQuestions: ques.subQuestions || [],
+            correctAnswer: ques.correctAnswer || null,
+            subject: quiz.subject,
+            className: quiz.className,
+            chapter: quiz.chapter,
+            book: quiz.book,
+            quizTitle: quiz.title,
+            quizStatus: quiz.status,
+            createdAt: quiz.createdAt
+          });
+        });
+      }
+    });
+
+    console.log(`✅ Total questions found: ${allQuestions.length}`);
+
+    // Group statistics
+    const questionTypeStats = allQuestions.reduce((acc, q) => {
+      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
+    const chapterStats = allQuestions.reduce((acc, q) => {
+      acc[q.chapter] = (acc[q.chapter] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = allQuestions.slice(start, end);
+
+    res.json({
+      success: true,
+      total: allQuestions.length,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(allQuestions.length / limit),
+      quizzesFound: quizzes.length,
+      searchedTitle: title,
+      statistics: {
+        totalQuestions: allQuestions.length,
+        questionTypes: questionTypeStats,
+        chapters: chapterStats
+      },
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error('❌ Error filtering by title:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ Alternative: Get ALL questions without pagination
+app.get('/quizzes/by-title/all', async (req, res) => {
+  try {
+    const { title } = req.query;
+
+    if (!title) {
+      return res.status(400).json({ 
+        message: 'Title parameter is required',
+        example: '/quizzes/by-title/all?title=Tick the correct answers'
+      });
+    }
+
+    // Exact match filter
+    const filter = {
+      title: new RegExp(`^${title.trim()}$`, "i")
+    };
+
+    console.log('🎯 Searching for exact title:', title);
+
+    const quizzes = await QuizItem.find(filter).lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes`);
+
+    if (quizzes.length === 0) {
+      const allTitles = await QuizItem.distinct('title');
+      return res.json({
+        success: false,
+        message: `No quizzes found with title: "${title}"`,
+        availableTitles: allTitles,
+        data: []
+      });
+    }
+
+    // Get ALL questions without pagination
+    let allQuestions = [];
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((ques, questionIndex) => {
+          allQuestions.push({
+            questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+            quizId: quiz._id.toString(),
+            questionIndex: questionIndex,
+            qtitle: ques.qtitle || null,
+            question: ques.question,
+            question1: ques.question1 || null,
+            question2: ques.question2 || null,
+            question3: ques.question3 || null,
+            question4: ques.question4 || null,
+            question5: ques.question5 || null,
+            questionType: ques.questionType,
+            imageUrl: ques.imageUrl || null,
+            marks: ques.marks || null,
+            options: ques.options || [],
+            subQuestions: ques.subQuestions || [],
+            correctAnswer: ques.correctAnswer || null,
+            subject: quiz.subject,
+            className: quiz.className,
+            chapter: quiz.chapter,
+            book: quiz.book,
+            quizTitle: quiz.title,
+            quizStatus: quiz.status,
+            createdAt: quiz.createdAt
+          });
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      total: allQuestions.length,
+      quizzesFound: quizzes.length,
+      searchedTitle: title,
+      data: allQuestions
+    });
+
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ API to filter questions by qtitle (question title)
+app.get('/questions/by-qtitle', async (req, res) => {
+  try {
+    const { qtitle, page = 1, limit = 100 } = req.query;
+
+    if (!qtitle) {
+      return res.status(400).json({ 
+        message: 'qtitle parameter is required',
+        example: '/questions/by-qtitle?qtitle=Describe the following picture'
+      });
+    }
+
+    console.log('🎯 Searching for qtitle:', qtitle);
+
+    // Find quizzes that have questions with matching qtitle
+    const quizzes = await QuizItem.find({
+      'questions.qtitle': new RegExp(qtitle.trim(), "i")
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes containing questions with qtitle: "${qtitle}"`);
+
+    if (quizzes.length === 0) {
+      // Get sample qtitles to help user
+      const allQuizzes = await QuizItem.find({}).select('questions.qtitle').limit(50).lean();
+      const sampleQtitles = [];
+      
+      allQuizzes.forEach(quiz => {
+        if (quiz.questions) {
+          quiz.questions.forEach(q => {
+            if (q.qtitle && !sampleQtitles.includes(q.qtitle)) {
+              sampleQtitles.push(q.qtitle);
+            }
+          });
+        }
+      });
+      
+      return res.json({
+        success: false,
+        total: 0,
+        message: `No questions found with qtitle: "${qtitle}"`,
+        searchedQtitle: qtitle,
+        availableQtitles: sampleQtitles.slice(0, 20),
+        suggestion: 'Check the availableQtitles list for exact qtitle names',
+        data: []
+      });
+    }
+
+    // Flatten and filter questions by qtitle
+    let matchingQuestions = [];
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((ques, questionIndex) => {
+          // Only include questions that match the qtitle
+          const regex = new RegExp(qtitle.trim(), "i");
+          if (ques.qtitle && regex.test(ques.qtitle)) {
+            matchingQuestions.push({
+              questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+              quizId: quiz._id.toString(),
+              questionIndex: questionIndex,
+              qtitle: ques.qtitle,
+              question: ques.question,
+              question1: ques.question1 || null,
+              question2: ques.question2 || null,
+              question3: ques.question3 || null,
+              question4: ques.question4 || null,
+              question5: ques.question5 || null,
+              questionType: ques.questionType,
+              imageUrl: ques.imageUrl || null,
+              marks: ques.marks || null,
+              options: ques.options || [],
+              subQuestions: ques.subQuestions || [],
+              correctAnswer: ques.correctAnswer || null,
+              subject: quiz.subject,
+              className: quiz.className,
+              chapter: quiz.chapter,
+              book: quiz.book,
+              quizTitle: quiz.title,
+              quizStatus: quiz.status,
+              createdAt: quiz.createdAt
+            });
+          }
+        });
+      }
+    });
+
+    console.log(`✅ Total matching questions: ${matchingQuestions.length}`);
+
+    // Group statistics
+    const questionTypeStats = matchingQuestions.reduce((acc, q) => {
+      acc[q.questionType] = (acc[q.questionType] || 0) + 1;
+      return acc;
+    }, {});
+
+    const chapterStats = matchingQuestions.reduce((acc, q) => {
+      acc[q.chapter] = (acc[q.chapter] || 0) + 1;
+      return acc;
+    }, {});
+
+    const quizTitleStats = matchingQuestions.reduce((acc, q) => {
+      acc[q.quizTitle] = (acc[q.quizTitle] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = matchingQuestions.slice(start, end);
+
+    res.json({
+      success: true,
+      total: matchingQuestions.length,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(matchingQuestions.length / limit),
+      quizzesSearched: quizzes.length,
+      searchedQtitle: qtitle,
+      statistics: {
+        totalQuestions: matchingQuestions.length,
+        questionTypes: questionTypeStats,
+        chapters: chapterStats,
+        quizTitles: quizTitleStats
+      },
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error('❌ Error filtering by qtitle:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ API to get all unique qtitles
+app.get('/questions/qtitles', async (req, res) => {
+  try {
+    const quizzes = await QuizItem.find({}).select('questions.qtitle title subject className').lean();
+    
+    const qtitlesMap = new Map();
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions) {
+        quiz.questions.forEach(q => {
+          if (q.qtitle) {
+            if (!qtitlesMap.has(q.qtitle)) {
+              qtitlesMap.set(q.qtitle, {
+                qtitle: q.qtitle,
+                count: 0,
+                quizTitles: new Set(),
+                subjects: new Set(),
+                classes: new Set()
+              });
+            }
+            
+            const entry = qtitlesMap.get(q.qtitle);
+            entry.count++;
+            entry.quizTitles.add(quiz.title);
+            entry.subjects.add(quiz.subject);
+            entry.classes.add(quiz.className);
+          }
+        });
+      }
+    });
+
+    const qtitlesList = Array.from(qtitlesMap.values()).map(entry => ({
+      qtitle: entry.qtitle,
+      count: entry.count,
+      quizTitles: Array.from(entry.quizTitles),
+      subjects: Array.from(entry.subjects),
+      classes: Array.from(entry.classes)
+    })).sort((a, b) => b.count - a.count);
+
+    res.json({
+      success: true,
+      total: qtitlesList.length,
+      qtitles: qtitlesList
+    });
+
+  } catch (err) {
+    console.error('❌ Error fetching qtitles:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
+
+// ✅ Combined filter: by quiz title AND qtitle
+app.get('/questions/filter', async (req, res) => {
+  try {
+    const { title, qtitle, questionType, chapter, page = 1, limit = 100 } = req.query;
+
+    let filter = {};
+    
+    // Filter by quiz title
+    if (title) {
+      filter.title = new RegExp(title.trim(), "i");
+    }
+    
+    // Filter by qtitle (question title)
+    if (qtitle) {
+      filter['questions.qtitle'] = new RegExp(qtitle.trim(), "i");
+    }
+    
+    // Filter by chapter
+    if (chapter) {
+      filter.chapter = new RegExp(chapter.trim(), "i");
+    }
+
+    console.log('🔍 Applied filters:', JSON.stringify(filter, null, 2));
+
+    const quizzes = await QuizItem.find(filter).sort({ createdAt: -1 }).lean();
+
+    console.log(`📚 Found ${quizzes.length} quizzes`);
+
+    // Flatten questions with additional filtering
+    let questions = [];
+    
+    quizzes.forEach(quiz => {
+      if (quiz.questions && Array.isArray(quiz.questions)) {
+        quiz.questions.forEach((ques, questionIndex) => {
+          // Additional filters at question level
+          let include = true;
+          
+          if (qtitle && !new RegExp(qtitle.trim(), "i").test(ques.qtitle || '')) {
+            include = false;
+          }
+          
+          if (questionType && ques.questionType !== questionType) {
+            include = false;
+          }
+          
+          if (include) {
+            questions.push({
+              questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
+              quizId: quiz._id.toString(),
+              questionIndex: questionIndex,
+              qtitle: ques.qtitle,
+              question: ques.question,
+              question1: ques.question1 || null,
+              question2: ques.question2 || null,
+              question3: ques.question3 || null,
+              question4: ques.question4 || null,
+              question5: ques.question5 || null,
+              questionType: ques.questionType,
+              imageUrl: ques.imageUrl || null,
+              marks: ques.marks || null,
+              options: ques.options || [],
+              subQuestions: ques.subQuestions || [],
+              correctAnswer: ques.correctAnswer || null,
+              subject: quiz.subject,
+              className: quiz.className,
+              chapter: quiz.chapter,
+              book: quiz.book,
+              quizTitle: quiz.title,
+              quizStatus: quiz.status,
+              createdAt: quiz.createdAt
+            });
+          }
+        });
+      }
+    });
+
+    // Statistics
+    const stats = {
+      questionTypes: {},
+      chapters: {},
+      quizTitles: {}
+    };
+
+    questions.forEach(q => {
+      stats.questionTypes[q.questionType] = (stats.questionTypes[q.questionType] || 0) + 1;
+      stats.chapters[q.chapter] = (stats.chapters[q.chapter] || 0) + 1;
+      stats.quizTitles[q.quizTitle] = (stats.quizTitles[q.quizTitle] || 0) + 1;
+    });
+
+    // Pagination
+    const start = (page - 1) * limit;
+    const end = start + parseInt(limit);
+    const paginated = questions.slice(start, end);
+
+    res.json({
+      success: true,
+      total: questions.length,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(questions.length / limit),
+      filters: { title, qtitle, questionType, chapter },
+      statistics: stats,
+      data: paginated
+    });
+
+  } catch (err) {
+    console.error('❌ Error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
+  }
+});
 // Create Book with Chapters
 app.post('/chapter', async (req, res) => {
   try {

@@ -1435,13 +1435,47 @@ app.get('/questions/qtitles', async (req, res) => {
 // ✅ Combined filter: by quiz title AND qtitle
 app.get('/questions/filter', async (req, res) => {
   try {
-    const { title, qtitle, questionType, chapter, page = 1, limit = 100 } = req.query;
+    const { 
+      title, 
+      qtitle, 
+      questionType, 
+      chapter, 
+      section,
+      className,
+      subject,
+      book,
+      chapters,
+      page = 1, 
+      limit = 100 
+    } = req.query;
 
     let filter = {};
     
-    // Filter by quiz title
+    // Filter by quiz-level fields
     if (title) {
       filter.title = new RegExp(title.trim(), "i");
+    }
+    
+    if (className) {
+      filter.className = String(className);
+    }
+    
+    if (subject) {
+      filter.subject = new RegExp(subject.trim(), "i");
+    }
+    
+    if (book) {
+      filter.book = new RegExp(book.trim(), "i");
+    }
+    
+    // Handle multiple chapters (comma-separated)
+    if (chapters) {
+      const chapterArray = chapters.split(',').map(ch => ch.trim());
+      filter.chapter = { 
+        $in: chapterArray.map(ch => new RegExp(`^${ch}$`, "i"))
+      };
+    } else if (chapter) {
+      filter.chapter = new RegExp(chapter.trim(), "i");
     }
     
     // Filter by qtitle (question title)
@@ -1449,9 +1483,9 @@ app.get('/questions/filter', async (req, res) => {
       filter['questions.qtitle'] = new RegExp(qtitle.trim(), "i");
     }
     
-    // Filter by chapter
-    if (chapter) {
-      filter.chapter = new RegExp(chapter.trim(), "i");
+    // Filter by section (question-level)
+    if (section) {
+      filter['questions.section'] = new RegExp(section.trim(), "i");
     }
 
     console.log('🔍 Applied filters:', JSON.stringify(filter, null, 2));
@@ -1459,6 +1493,18 @@ app.get('/questions/filter', async (req, res) => {
     const quizzes = await QuizItem.find(filter).sort({ createdAt: -1 }).lean();
 
     console.log(`📚 Found ${quizzes.length} quizzes`);
+
+    // Parse multiple question types (comma-separated)
+    let questionTypes = [];
+    if (questionType) {
+      questionTypes = questionType.split(',').map(qt => qt.trim());
+    }
+
+    // Parse multiple sections (comma-separated)
+    let sections = [];
+    if (section) {
+      sections = section.split(',').map(s => s.trim());
+    }
 
     // Flatten questions with additional filtering
     let questions = [];
@@ -1473,8 +1519,20 @@ app.get('/questions/filter', async (req, res) => {
             include = false;
           }
           
-          if (questionType && ques.questionType !== questionType) {
+          // Handle multiple question types
+          if (questionTypes.length > 0 && !questionTypes.includes(ques.questionType)) {
             include = false;
+          }
+          
+          // Handle multiple sections
+          if (sections.length > 0) {
+            const qSection = ques.section || '';
+            const matchesSection = sections.some(s => 
+              new RegExp(s, "i").test(qSection)
+            );
+            if (!matchesSection) {
+              include = false;
+            }
           }
           
           if (include) {
@@ -1482,7 +1540,8 @@ app.get('/questions/filter', async (req, res) => {
               questionId: ques._id ? ques._id.toString() : `${quiz._id.toString()}_${questionIndex}`,
               quizId: quiz._id.toString(),
               questionIndex: questionIndex,
-              qtitle: ques.qtitle,
+              qtitle: ques.qtitle || null,
+              section: ques.section || null, // ✅ Added section field
               question: ques.question,
               question1: ques.question1 || null,
               question2: ques.question2 || null,
@@ -1512,13 +1571,18 @@ app.get('/questions/filter', async (req, res) => {
     const stats = {
       questionTypes: {},
       chapters: {},
-      quizTitles: {}
+      quizTitles: {},
+      sections: {} // ✅ Added section statistics
     };
 
     questions.forEach(q => {
       stats.questionTypes[q.questionType] = (stats.questionTypes[q.questionType] || 0) + 1;
       stats.chapters[q.chapter] = (stats.chapters[q.chapter] || 0) + 1;
       stats.quizTitles[q.quizTitle] = (stats.quizTitles[q.quizTitle] || 0) + 1;
+      
+      // ✅ Count sections
+      const sectionKey = q.section || 'No Section';
+      stats.sections[sectionKey] = (stats.sections[sectionKey] || 0) + 1;
     });
 
     // Pagination
@@ -1532,7 +1596,17 @@ app.get('/questions/filter', async (req, res) => {
       page: Number(page),
       limit: Number(limit),
       totalPages: Math.ceil(questions.length / limit),
-      filters: { title, qtitle, questionType, chapter },
+      filters: { 
+        title, 
+        qtitle, 
+        questionType: questionTypes, 
+        chapter, 
+        chapters: chapters ? chapters.split(',').map(c => c.trim()) : [],
+        section: sections,
+        className,
+        subject,
+        book
+      },
       statistics: stats,
       data: paginated
     });

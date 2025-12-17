@@ -1452,10 +1452,6 @@ app.get('/questions/filter', async (req, res) => {
     let filter = {};
     
     // Filter by quiz-level fields
-    if (title) {
-      filter.title = new RegExp(title.trim(), "i");
-    }
-    
     if (className) {
       filter.className = String(className);
     }
@@ -1468,6 +1464,10 @@ app.get('/questions/filter', async (req, res) => {
       filter.book = new RegExp(book.trim(), "i");
     }
     
+    if (title) {
+      filter.title = new RegExp(title.trim(), "i");
+    }
+    
     // Handle multiple chapters (comma-separated)
     if (chapters) {
       const chapterArray = chapters.split(',').map(ch => ch.trim());
@@ -1477,61 +1477,75 @@ app.get('/questions/filter', async (req, res) => {
     } else if (chapter) {
       filter.chapter = new RegExp(chapter.trim(), "i");
     }
-    
-    // Filter by qtitle (question title)
-    if (qtitle) {
-      filter['questions.qtitle'] = new RegExp(qtitle.trim(), "i");
-    }
-    
-    // Filter by section (question-level)
-    if (section) {
-      filter['questions.section'] = new RegExp(section.trim(), "i");
-    }
 
-    console.log('🔍 Applied filters:', JSON.stringify(filter, null, 2));
+    console.log('🔍 Applied MongoDB filters:', JSON.stringify(filter, null, 2));
 
     const quizzes = await QuizItem.find(filter).sort({ createdAt: -1 }).lean();
 
-    console.log(`📚 Found ${quizzes.length} quizzes`);
+    console.log(`📚 Found ${quizzes.length} quizzes matching filter`);
 
     // Parse multiple question types (comma-separated)
     let questionTypes = [];
     if (questionType) {
-      questionTypes = questionType.split(',').map(qt => qt.trim());
+      // Handle both comma and & separated values
+      const typeString = questionType.replace(/&/g, ',');
+      questionTypes = typeString.split(',').map(qt => qt.trim()).filter(qt => qt.length > 0);
+      console.log('🎯 Question types to filter:', questionTypes);
     }
 
-    // Parse multiple sections (comma-separated)
+    // Parse multiple sections (comma-separated or & separated)
     let sections = [];
     if (section) {
-      sections = section.split(',').map(s => s.trim());
+      // Handle both comma and & separated values
+      const sectionString = section.replace(/&/g, ',');
+      sections = sectionString.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      console.log('📑 Sections to filter:', sections);
     }
 
-    // Flatten questions with additional filtering
+    // ✅ Parse multiple qtitles (comma-separated)
+    let qtitles = [];
+    if (qtitle) {
+      // Handle both comma and & separated values
+      const qtitleString = qtitle.replace(/&/g, ',');
+      qtitles = qtitleString.split(',').map(qt => qt.trim()).filter(qt => qt.length > 0);
+      console.log('📝 Qtitles to filter:', qtitles);
+    }
+
+    // Flatten questions with filtering
     let questions = [];
     
     quizzes.forEach(quiz => {
       if (quiz.questions && Array.isArray(quiz.questions)) {
         quiz.questions.forEach((ques, questionIndex) => {
-          // Additional filters at question level
           let include = true;
           
-          if (qtitle && !new RegExp(qtitle.trim(), "i").test(ques.qtitle || '')) {
-            include = false;
+          // ✅ Filter by multiple qtitles (OR logic - match any qtitle)
+          if (qtitles.length > 0) {
+            const matchesQtitle = qtitles.some(qt => 
+              new RegExp(qt, "i").test(ques.qtitle || '')
+            );
+            if (!matchesQtitle) {
+              include = false;
+            }
           }
           
-          // Handle multiple question types
+          // Filter by question types (OR logic - match any type)
           if (questionTypes.length > 0 && !questionTypes.includes(ques.questionType)) {
             include = false;
           }
           
-          // Handle multiple sections
+          // Filter by sections (OR logic - match any section)
           if (sections.length > 0) {
             const qSection = ques.section || '';
-            const matchesSection = sections.some(s => 
-              new RegExp(s, "i").test(qSection)
-            );
-            if (!matchesSection) {
+            if (!qSection) {
               include = false;
+            } else {
+              const matchesSection = sections.some(s => 
+                new RegExp(`^${s}$`, "i").test(qSection)
+              );
+              if (!matchesSection) {
+                include = false;
+              }
             }
           }
           
@@ -1541,7 +1555,7 @@ app.get('/questions/filter', async (req, res) => {
               quizId: quiz._id.toString(),
               questionIndex: questionIndex,
               qtitle: ques.qtitle || null,
-              section: ques.section || null, // ✅ Added section field
+              section: ques.section || null,
               question: ques.question,
               question1: ques.question1 || null,
               question2: ques.question2 || null,
@@ -1567,12 +1581,15 @@ app.get('/questions/filter', async (req, res) => {
       }
     });
 
+    console.log(`✅ Total questions after filtering: ${questions.length}`);
+
     // Statistics
     const stats = {
       questionTypes: {},
       chapters: {},
       quizTitles: {},
-      sections: {} // ✅ Added section statistics
+      sections: {},
+      qtitles: {} // ✅ Added qtitle statistics
     };
 
     questions.forEach(q => {
@@ -1580,9 +1597,12 @@ app.get('/questions/filter', async (req, res) => {
       stats.chapters[q.chapter] = (stats.chapters[q.chapter] || 0) + 1;
       stats.quizTitles[q.quizTitle] = (stats.quizTitles[q.quizTitle] || 0) + 1;
       
-      // ✅ Count sections
       const sectionKey = q.section || 'No Section';
       stats.sections[sectionKey] = (stats.sections[sectionKey] || 0) + 1;
+      
+      // ✅ Count qtitles
+      const qtitleKey = q.qtitle || 'No Qtitle';
+      stats.qtitles[qtitleKey] = (stats.qtitles[qtitleKey] || 0) + 1;
     });
 
     // Pagination
@@ -1597,15 +1617,15 @@ app.get('/questions/filter', async (req, res) => {
       limit: Number(limit),
       totalPages: Math.ceil(questions.length / limit),
       filters: { 
-        title, 
-        qtitle, 
+        title: title || null,
+        qtitle: qtitles, // ✅ Return array of qtitles
         questionType: questionTypes, 
-        chapter, 
+        chapter: chapter || null,
         chapters: chapters ? chapters.split(',').map(c => c.trim()) : [],
         section: sections,
-        className,
-        subject,
-        book
+        className: className || null,
+        subject: subject || null,
+        book: book || null
       },
       statistics: stats,
       data: paginated

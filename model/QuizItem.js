@@ -31,6 +31,13 @@ const questionSchema = new Schema(
         message: 'qtitle must be provided and cannot be empty'
       }
     },
+    // ✅ NEW: Section field before questionType
+    section: {
+      type: String,
+      required: false,
+      trim: true,
+      default: null
+    },
     questionType: {
       type: String,
       required: true,

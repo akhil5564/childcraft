@@ -3281,8 +3281,11 @@ app.get('/books/filter', async (req, res) => {
 });
 
 // Create Examination
+// Create Examination - Updated to match frontend format
 app.post('/examinations', async (req, res) => {
   try {
+    console.log("📩 Incoming examination data:", JSON.stringify(req.body, null, 2));
+
     const {
       schoolId,
       subject,
@@ -3296,7 +3299,7 @@ app.post('/examinations', async (req, res) => {
       questions
     } = req.body;
 
-    // Validate required fields
+    // ✅ Validate required fields
     if (
       !schoolId || !subject || !className || !book ||
       !chapters || !examinationType || !totalMark ||
@@ -3307,21 +3310,109 @@ app.post('/examinations', async (req, res) => {
         required: [
           'schoolId', 'subject', 'class', 'book', 'chapters',
           'examinationType', 'totalMark', 'duration', 'schoolName', 'questions'
-        ]
+        ],
+        received: { schoolId, subject, className, book, chapters, examinationType, totalMark, duration, schoolName, questionsCount: questions?.length }
       });
     }
 
-    // Validate each question
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
-      if (!q.question || !q.questionType || !q.mark) {
-        return res.status(400).json({
-          message: `Question ${i + 1}: Missing question, questionType, or mark`
-        });
-      }
+    // ✅ Validate chapters is an array
+    if (!Array.isArray(chapters) || chapters.length === 0) {
+      return res.status(400).json({
+        message: 'chapters must be a non-empty array',
+        received: chapters
+      });
     }
 
-    // Save to DB
+    // ✅ Validate and normalize each question
+    const normalizedQuestions = [];
+    
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      
+      console.log(`📝 Processing question ${i + 1}:`, q);
+
+      // Validate required fields
+      if (!q.question || !q.questionType || !q.mark) {
+        return res.status(400).json({
+          message: `Question ${i + 1}: Missing required fields (question, questionType, mark)`,
+          question: q
+        });
+      }
+
+      // Normalize questionType (convert to lowercase with underscore)
+      const normalizeQuestionType = (type) => {
+        const typeMap = {
+          'direct': 'direct',
+          'answerthefollowing': 'answer_the_following',
+          'answer_the_following': 'answer_the_following',
+          'mcq': 'multiple_choice',
+          'multiplechoice': 'multiple_choice',
+          'multiple_choice': 'multiple_choice',
+          'picture': 'picture_questions',
+          'picturequestions': 'picture_questions',
+          'picture_questions': 'picture_questions'
+        };
+        return typeMap[type.toLowerCase()] || type.toLowerCase();
+      };
+
+      const normalizedType = normalizeQuestionType(q.questionType);
+
+      // Build normalized question object
+      const normalizedQuestion = {
+        questionId: q.questionId || null,
+        question: q.question,
+        questionType: normalizedType,
+        mark: Number(q.mark),
+        qtitle: q.qtitle || null,
+        section: q.section || null,
+        subQuestions: q.subQuestions || [],
+        options: q.options || [],
+        correctAnswer: q.correctAnswer || null,
+        imageUrl: q.imageUrl || null
+      };
+
+      // ✅ Add subtype fields based on question type
+      if (normalizedType === 'direct' && q.directSubtype) {
+        normalizedQuestion.directSubtype = q.directSubtype;
+        console.log(`📋 Direct question subtype: ${q.directSubtype}`);
+      }
+
+      if (normalizedType === 'answer_the_following' && q.answerFollowingSubtype) {
+        normalizedQuestion.answerFollowingSubtype = q.answerFollowingSubtype;
+        console.log(`📋 Answer following subtype: ${q.answerFollowingSubtype}`);
+      }
+
+      // Validate based on question type
+      if (normalizedType === 'multiple_choice') {
+        if (!q.options || !Array.isArray(q.options) || q.options.length === 0) {
+          return res.status(400).json({
+            message: `Question ${i + 1}: Multiple choice must have options array`,
+            question: q
+          });
+        }
+      }
+
+      if (normalizedType === 'picture_questions') {
+        if (!q.imageUrl) {
+          return res.status(400).json({
+            message: `Question ${i + 1}: Picture questions must have an imageUrl`,
+            question: q
+          });
+        }
+        if (!q.subQuestions || q.subQuestions.length === 0) {
+          return res.status(400).json({
+            message: `Question ${i + 1}: Picture questions must have subQuestions array`,
+            question: q
+          });
+        }
+      }
+
+      normalizedQuestions.push(normalizedQuestion);
+    }
+
+    console.log("✅ Validation passed, creating examination...");
+
+    // ✅ Save to DB
     const newExam = new Examination({
       school: schoolId,
       subject,
@@ -3329,34 +3420,68 @@ app.post('/examinations', async (req, res) => {
       book,
       chapters,
       examinationType,
-      totalMark,
-      duration,
+      totalMark: Number(totalMark),
+      duration: Number(duration),
       schoolName,
-      questions
+      questions: normalizedQuestions
     });
+
     await newExam.save();
+    console.log("✅ Examination saved successfully:", newExam._id);
 
     res.status(201).json({
+      success: true,
       message: 'Examination created successfully',
-      id: newExam._id,
-      createdAt: newExam.createdAt,
-      data: {
-        schoolId,
-        subject,
-        class: className,
-        book,
-        chapters,
-        examinationType,
-        totalMark,
-        duration,
-        schoolName,
-        questions
+      examination: {
+        id: newExam._id.toString(),
+        schoolId: newExam.school.toString(),
+        subject: newExam.subject,
+        class: newExam.class,
+        book: newExam.book,
+        chapters: newExam.chapters,
+        examinationType: newExam.examinationType,
+        totalMark: newExam.totalMark,
+        duration: newExam.duration,
+        schoolName: newExam.schoolName,
+        questions: newExam.questions.map(q => ({
+          questionId: q.questionId,
+          question: q.question,
+          questionType: q.questionType,
+          mark: q.mark,
+          qtitle: q.qtitle,
+          section: q.section,
+          directSubtype: q.directSubtype || null,
+          answerFollowingSubtype: q.answerFollowingSubtype || null,
+          subQuestions: q.subQuestions,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          imageUrl: q.imageUrl
+        })),
+        questionCount: newExam.questions.length,
+        createdAt: newExam.createdAt.toISOString(),
+        updatedAt: newExam.updatedAt.toISOString()
       }
     });
 
   } catch (err) {
     console.error('❌ Error creating examination:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation Error',
+        details: Object.keys(err.errors).map(key => ({
+          field: key,
+          message: err.errors[key].message
+        }))
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 
@@ -3380,6 +3505,8 @@ app.get('/examinations/school/:id', async (req, res) => {
       filter.examinationType = new RegExp(examinationType, 'i');
     }
 
+    console.log('🔍 Filter applied:', JSON.stringify(filter, null, 2));
+
     const skip = (Number(page) - 1) * Number(pageSize);
     const limit = Number(pageSize);
 
@@ -3391,16 +3518,52 @@ app.get('/examinations/school/:id', async (req, res) => {
       .limit(limit)
       .lean();
 
+    console.log(`✅ Found ${exams.length} examinations`);
+
     res.json({
+      success: true,
       total,
       page: Number(page),
       pageSize: Number(pageSize),
       totalPages: Math.ceil(total / pageSize),
-      examinations: exams
+      examinations: exams.map(exam => ({
+        id: exam._id.toString(),
+        schoolId: exam.school.toString(),
+        schoolName: exam.schoolName,
+        subject: exam.subject,
+        class: exam.class,
+        book: exam.book,
+        chapters: exam.chapters,
+        examinationType: exam.examinationType,
+        totalMark: exam.totalMark,
+        duration: exam.duration,
+        questionCount: exam.questions.length,
+        questions: exam.questions.map((q, index) => ({
+          questionIndex: index,
+          questionId: q.questionId,
+          question: q.question,
+          questionType: q.questionType,
+          mark: q.mark,
+          qtitle: q.qtitle || null,
+          section: q.section || null,
+          directSubtype: q.directSubtype || null,
+          answerFollowingSubtype: q.answerFollowingSubtype || null,
+          subQuestions: q.subQuestions || [],
+          options: q.options || [],
+          correctAnswer: q.correctAnswer || null,
+          imageUrl: q.imageUrl || null
+        })),
+        createdAt: exam.createdAt ? exam.createdAt.toISOString() : null,
+        updatedAt: exam.updatedAt ? exam.updatedAt.toISOString() : null
+      }))
     });
   } catch (err) {
     console.error('❌ Error fetching examinations by filters:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: err.message 
+    });
   }
 });
 

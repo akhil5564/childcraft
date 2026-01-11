@@ -284,6 +284,7 @@ app.get('/random-gen', async (req, res) => {
       subject,
       className,
       book,
+      code,
       Chapters,
       marks
     } = req.query;
@@ -330,6 +331,7 @@ app.get('/random-gen', async (req, res) => {
         imageUrl: ques.imageUrl || null,
         options: ques.options || [],
         subject: quiz.subject,
+        code: quiz.code || null,
         className: quiz.className,
         chapter: quiz.chapter,
         book: quiz.book,
@@ -3289,6 +3291,7 @@ app.post('/examinations', async (req, res) => {
       subject,
       class: className,
       book,
+      code,
       chapters,
       examinationType,
       totalMark,
@@ -3307,7 +3310,7 @@ app.post('/examinations', async (req, res) => {
         message: 'Missing required fields',
         required: [
           'schoolId', 'subject', 'class', 'book', 'chapters',
-          'examinationType', 'totalMark', 'duration', 'schoolName', 'questions'
+          'examinationType', 'totalMark', 'duration', 'schoolName', 'questions','code'
         ]
       });
     }
@@ -3328,6 +3331,7 @@ app.post('/examinations', async (req, res) => {
       subject,
       class: className,
       book,
+      code,
       chapters,
       examinationType,
       totalMark: Number(totalMark),
@@ -3348,6 +3352,7 @@ app.post('/examinations', async (req, res) => {
         subject: saved.subject,
         class: saved.class,
         book: saved.book,
+        code: saved.code,
         chapters: saved.chapters,
         examinationType: saved.examinationType,
         totalMark: saved.totalMark,
@@ -3365,90 +3370,7 @@ app.post('/examinations', async (req, res) => {
 });
 
 // Alias (singular) route: POST /examination -> same behavior as /examinations
-app.post('/examination', async (req, res) => {
-  try {
-    const {
-      schoolId,
-      subject,
-      class: className,
-      code,
-      book,
-      chapters,
-      examinationType,
-      totalMark,
-      duration,
-      schoolName,
-      questions
-    } = req.body;
 
-    if (
-      !schoolId || !subject || !className || !book ||
-      !Array.isArray(chapters) || !chapters.length ||
-      !examinationType || !totalMark ||
-      !duration || !schoolName ||
-      !Array.isArray(questions) || questions.length === 0
-    ) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
-
-    // ✅ normalize questions
-    const normalizedQuestions = questions.map(q => ({
-      questionId: q.questionId ?? null,
-      qtitle: q.qtitle ?? null,
-
-      // ✅ FORCE section to be stored
-      section: q.section ?? null,
-
-      question: q.question,
-      questionType: q.questionType,
-      mark: q.mark,
-
-      subQuestions: q.subQuestions || [],
-      options: q.options || [],
-
-      correctAnswer: q.correctAnswer ?? null,
-      answer: q.answer ?? null,
-      imageUrl: q.imageUrl ?? null,
-
-      directSubtype: q.directSubtype ?? null,
-      mcqSubtype: q.mcqSubtype ?? null,
-      answerFollowingSubtype: q.answerFollowingSubtype ?? null
-    }));
-
-    const newExamination = new Examination({
-      school: schoolId,
-      subject,
-      class: className,
-      book,
-
-      // ✅ FIX: store code
-      code: code ?? null,
-
-      chapters,
-      examinationType,
-      totalMark: Number(totalMark),
-      duration: Number(duration),
-      schoolName,
-      questions: normalizedQuestions,
-      rawPayload: req.body
-    });
-
-    const saved = await newExamination.save();
-
-    return res.status(201).json({
-      success: true,
-      message: 'Examination created successfully',
-      examinationId: saved._id
-    });
-  } catch (err) {
-    console.error('❌ Error creating examination:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: err.message
-    });
-  }
-});
 
 
 // Update Examination by ID
@@ -3461,6 +3383,7 @@ app.put('/examinations/:id', async (req, res) => {
       subject,
       class: className,
       book,
+      code,
       chapters,
       examinationType,
       totalMark,
@@ -3471,7 +3394,7 @@ app.put('/examinations/:id', async (req, res) => {
 
     // Validate required fields (allow partial updates if desired, but here require same as create)
     if (
-      !schoolId || !subject || !className || !book ||
+      !schoolId || !subject || !className || !book || !code ||
       !chapters || !examinationType || !totalMark ||
       !duration || !schoolName || !Array.isArray(questions) || questions.length === 0
     ) {
@@ -3500,6 +3423,7 @@ app.put('/examinations/:id', async (req, res) => {
       subject,
       class: className,
       book,
+      code,
       chapters,
       examinationType,
       totalMark: Number(totalMark),
@@ -3524,6 +3448,7 @@ app.put('/examinations/:id', async (req, res) => {
         subject: updated.subject,
         class: updated.class,
         book: updated.book,
+        code: updated.code,
         chapters: updated.chapters,
         examinationType: updated.examinationType,
         totalMark: updated.totalMark,
@@ -3587,6 +3512,7 @@ app.get('/examinations/school/:id', async (req, res) => {
         schoolName: exam.schoolName,
         subject: exam.subject,
         class: exam.class,
+        code: exam.code,
         book: exam.book,
         chapters: exam.chapters,
         examinationType: exam.examinationType,

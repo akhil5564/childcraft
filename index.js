@@ -95,6 +95,7 @@ app.post('/login', async (req, res) => {
       id: user._id,
       username: user.username,
       role: user.role,
+schoolCode: user.schoolDetails?.schoolCode,
       status: user.status,
       password: user.originalPassword,
       displayName: user.role === 'school' ? 

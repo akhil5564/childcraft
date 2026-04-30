@@ -13,6 +13,8 @@ const Examination = require('./model/Examination');
 const Book = require('./model/Book');
 const QuizItem = require('./model/QuizItem');  // new
 const Subject = require('./model/Subject');
+const QuestionTitle = require('./model/QuestionTitle');
+
 
 const app = express();
 app.use(express.json());
@@ -400,7 +402,7 @@ app.get('/random-gen', async (req, res) => {
 
 app.get('/qustion', async (req, res) => {
   try {
-    const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10, title } = req.query;
+    const { subject, className, chapters, book, questionTypes, q, page = 1, limit = 10, qtitle, section } = req.query;
 
     // Build dynamic filter
     let filter = {};
@@ -408,13 +410,13 @@ app.get('/qustion', async (req, res) => {
     if (className) filter.className = String(className);
     if (book) filter.book = new RegExp(book, "i");
 
-    // ✅ Handle multiple titles (similar to chapters)
-    if (title) {
-      const titleArray = Array.isArray(title) ? title : title.split(',');
-      filter.title = { 
+    // ✅ Handle multiple question titles
+    if (qtitle) {
+      const titleArray = Array.isArray(qtitle) ? qtitle : qtitle.split(',');
+      filter["questions.qtitle"] = { 
         $in: titleArray.map(t => new RegExp(t.trim(), "i")) 
       };
-      console.log('🎯 Title filters:', titleArray);
+      console.log('🎯 Question Title filters:', titleArray);
     }
 
     // Handle multiple chapters
@@ -475,6 +477,7 @@ app.get('/qustion', async (req, res) => {
       console.log('✨ Normalized question types:', normalizedTypes);
     }
 
+    console.log("🔍 Incoming Query:", { qtitle, section, questionTypes });
     console.log("🔍 Applied MongoDB filters:", JSON.stringify(filter, null, 2));
 
     // Fetch quizzes
@@ -489,7 +492,7 @@ app.get('/qustion', async (req, res) => {
     let finalQuizzes = quizzes;
     let filtersApplied = true;
     
-    if (quizzes.length === 0 && Object.keys(filter).length > 0) {
+    if (quizzes.length === 0 && Object.keys(filter).length > 0 && !qtitle && !chapters && !questionTypes && !section) {
       console.log("⚠️ No quizzes matched filters, fetching all quizzes...");
       finalQuizzes = await QuizItem.find({})
         .sort({ createdAt: -1 })
@@ -506,6 +509,27 @@ app.get('/qustion', async (req, res) => {
       }
       
       return quiz.questions.map((ques, questionIndex) => {
+        const titleArray = qtitle ? (Array.isArray(qtitle) ? qtitle : qtitle.split(',').map(t => t.trim())) : [];
+        const sectionArray = section ? (Array.isArray(section) ? section : section.split(/[&,]/).map(s => s.trim())) : [];
+        
+        // ✅ Filter by question title if provided
+        if (filtersApplied && qtitle && titleArray.length > 0) {
+          const matchesTitle = titleArray.some(t => new RegExp(t, "i").test(ques.qtitle || ''));
+          if (!matchesTitle) {
+            // console.log(`❌ Title Mismatch: ${ques.qtitle} vs ${titleArray}`);
+            return null;
+          }
+        }
+
+        // ✅ Filter by section if provided (specifically for English)
+        if (filtersApplied && section && sectionArray.length > 0) {
+          const matchesSection = sectionArray.some(s => new RegExp(s.trim(), "i").test(ques.section || ''));
+          if (!matchesSection) {
+            // console.log(`❌ Section Mismatch: ${ques.section} vs ${sectionArray}`);
+            return null;
+          }
+        }
+
         // ✅ Only filter by question type if filters were successfully applied
         if (filtersApplied && questionTypes && normalizedTypes.length > 0 && !normalizedTypes.includes(ques.questionType)) {
           return null;
@@ -605,7 +629,7 @@ app.get('/qustion', async (req, res) => {
         className,
         book,
         chapters: chapters ? chapters.split(',') : [],
-        titles: title ? (Array.isArray(title) ? title : title.split(',')) : [],
+        titles: qtitle ? (Array.isArray(qtitle) ? qtitle : qtitle.split(',')) : [],
         questionTypes: normalizedTypes
       },
       data: paginated
@@ -3548,6 +3572,55 @@ app.delete('/examinations/:id', async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Error deleting examination:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// ----- QuestionTitle routes -----
+
+// Get all question titles (with optional type filter)
+app.get('/question-titles', async (req, res) => {
+  try {
+    const { type } = req.query;
+    const filter = type ? { type } : {};
+    const titles = await QuestionTitle.find(filter).sort({ name: 1 });
+    res.json(titles);
+  } catch (err) {
+    console.error('❌ Error fetching question titles:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Add a new manual question title
+app.post('/question-titles', async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    if (!name || !type) {
+      return res.status(400).json({ message: 'Name and type are required' });
+    }
+    const newTitle = new QuestionTitle({ name, type });
+    await newTitle.save();
+    res.status(201).json(newTitle);
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ message: 'This title already exists' });
+    }
+    console.error('❌ Error adding question title:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Delete a question title
+app.delete('/question-titles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await QuestionTitle.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Title not found' });
+    }
+    res.json({ message: 'Title deleted successfully', id });
+  } catch (err) {
+    console.error('❌ Error deleting question title:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
